@@ -1,6 +1,19 @@
 spring:
   application:
     name: servicio-productos
+  datasource:
+    # Conexión simple al primario hasta que se integre persistence-routing (issues #7 y #8).
+    # En Docker Compose la URL apunta al servicio "primary"; la clave nunca se versiona.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/productos_db}
+    username: ${DB_USER:productos_app}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # El esquema lo gestiona Flyway; Hibernate solo lo valida.
+      ddl-auto: validate
+  flyway:
+    enabled: true
 
 server:
   # Cada instancia recibe su puerto por variable de entorno (8081 y 8082 en el host).
@@ -17,3 +30,13 @@ eureka:
     # Latido cada 5 s y expiración a los 10 s (por defecto 30 s y 90 s).
     lease-renewal-interval-in-seconds: 5
     lease-expiration-duration-in-seconds: 10
+
+# Identifica a la instancia que respondió (header X-Instance-Id, usado en P02 y P03).
+instance:
+  id: ${INSTANCE_ID:local}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
