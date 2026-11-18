@@ -37,7 +37,7 @@ Detalles, decisiones y tabla de puertos en [docs/arquitectura.md](docs/arquitect
 .
 ├── database/            Scripts de inicialización del primario y las réplicas
 ├── docs/                Arquitectura, plan de trabajo, informe de pruebas y material de referencia
-├── requests/            Colección de solicitudes HTTP (pendiente)
+├── requests/            Colección de solicitudes HTTP (.http)
 ├── persistence-routing/ Librería compartida de enrutamiento de lecturas y escrituras
 ├── discovery-server/    Eureka Server
 ├── api-gateway/         Spring Cloud Gateway
@@ -167,9 +167,9 @@ Si un puerto del host ya está en uso (`ports are not available`), cambiar el va
 
 Resultados y evidencias en [docs/informe-pruebas.md](docs/informe-pruebas.md).
 
-## Colección de solicitudes *(pendiente)*
+## Colección de solicitudes
 
-Se ubicará en `requests/`.
+Ejemplos de todas las operaciones a través del Gateway, con casos de error y verificación del sistema, en [requests/](requests/README.md). Se usan con VS Code (extensión REST Client) o con IntelliJ. La documentación de cada operación está en [docs/api.md](docs/api.md).
 
 ## Video demostrativo *(pendiente)*
 

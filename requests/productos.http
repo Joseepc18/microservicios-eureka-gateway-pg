@@ -1,0 +1,55 @@
+# servicio-productos a través del Gateway. Documentación: docs/api.md.
+# Ejecutar en orden: las solicitudes del final usan el producto creado por "Crear producto".
+# La respuesta de cada solicitud incluye X-Instance-Id (productos-1 o productos-2).
+
+@gateway = http://127.0.0.1:8080
+
+### Listar productos (5 de ejemplo cargados por Flyway, más los que se hayan creado)
+# Esperado: 200
+GET {{gateway}}/api/productos
+
+### Obtener un producto
+# Esperado: 200
+GET {{gateway}}/api/productos/1
+
+### Crear producto (responde 201 con el header Location)
+# @name crearProducto
+# Esperado: 201
+POST {{gateway}}/api/productos
+Content-Type: application/json
+
+{
+  "nombre": "Cable HDMI",
+  "descripcion": "Cable HDMI de 2 metros",
+  "precio": 8.50,
+  "stock": 30
+}
+
+### Obtener el producto recién creado
+# Esperado: 200
+GET {{gateway}}/api/productos/{{crearProducto.response.body.$.id}}
+
+### Actualizar el producto creado (PUT reemplaza todos los campos)
+# Esperado: 200
+PUT {{gateway}}/api/productos/{{crearProducto.response.body.$.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Cable HDMI 4K",
+  "descripcion": "Cable HDMI 4K de 2 metros",
+  "precio": 9.90,
+  "stock": 30
+}
+
+### Descontar stock del producto creado (30 -> 25)
+# Esperado: 200
+PATCH {{gateway}}/api/productos/{{crearProducto.response.body.$.id}}/stock
+Content-Type: application/json
+
+{
+  "cantidad": 5
+}
+
+### Eliminar el producto creado
+# Esperado: 204
+DELETE {{gateway}}/api/productos/{{crearProducto.response.body.$.id}}

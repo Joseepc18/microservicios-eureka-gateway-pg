@@ -1,0 +1,39 @@
+# Verificación del sistema levantado con `docker compose up -d --build --wait`.
+# Variables: se cambian aquí si los puertos del host se modificaron en .env.
+# En Windows se usa 127.0.0.1 y no localhost (localhost puede resolver primero a IPv6 y colgarse).
+
+@gateway = http://127.0.0.1:8080
+@eureka = http://127.0.0.1:8761
+@productos1 = http://127.0.0.1:8081
+@productos2 = http://127.0.0.1:8082
+@pedidos = http://127.0.0.1:8083
+
+### Salud del Gateway
+# Esperado: 200
+GET {{gateway}}/actuator/health
+
+### Rutas lb:// cargadas en el Gateway
+# Esperado: 200
+GET {{gateway}}/actuator/gateway/routes
+
+### Registro de Eureka en JSON (deben figurar API-GATEWAY, SERVICIO-PEDIDOS y dos instancias de SERVICIO-PRODUCTOS)
+# Esperado: 200
+GET {{eureka}}/eureka/apps
+Accept: application/json
+
+### Salud de servicio-productos, instancia 1 (acceso directo)
+# Esperado: 200
+GET {{productos1}}/actuator/health
+
+### Salud de servicio-productos, instancia 2 (acceso directo)
+# Esperado: 200
+GET {{productos2}}/actuator/health
+
+### Salud de servicio-pedidos (acceso directo)
+# Esperado: 200
+GET {{pedidos}}/actuator/health
+
+### Balanceo: repetir esta solicitud varias veces y mirar el header X-Instance-Id de la respuesta
+### (alterna entre productos-1 y productos-2)
+# Esperado: 200
+GET {{gateway}}/api/productos/1
