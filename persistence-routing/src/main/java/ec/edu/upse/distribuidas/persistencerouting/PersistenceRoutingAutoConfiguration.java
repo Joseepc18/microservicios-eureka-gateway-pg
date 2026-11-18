@@ -1,0 +1,86 @@
+package ec.edu.upse.distribuidas.persistencerouting;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.util.StringUtils;
+
+import com.zaxxer.hikari.HikariDataSource;
+
+/**
+ * Autoconfiguración del enrutamiento de lecturas y escrituras.
+ *
+ * <p>Se activa cuando existe {@code persistence.routing.primary.url}. Entonces reemplaza el
+ * {@code DataSource} que Spring Boot crearía por defecto ({@code spring.datasource.*}) por:
+ *
+ * <pre>
+ * LazyRoutingDataSource                  (único bean DataSource: proxy perezoso; lo usan JPA y JdbcTemplate)
+ *   └─ ReadWriteRoutingDataSource        (PRIMARY / REPLICA según la transacción)
+ *        ├─ PRIMARY → DataSourceNode primary  → pool HikariCP
+ *        └─ REPLICA → ReplicaPoolDataSource   → política (round-robin)
+ *                        ├─ DataSourceNode replica1 → pool HikariCP
+ *                        └─ DataSourceNode replica2 → pool HikariCP
+ * </pre>
+ */
+@AutoConfiguration(before = DataSourceAutoConfiguration.class)
+@ConditionalOnProperty(prefix = PersistenceRoutingProperties.PREFIX, name = "primary.url")
+@EnableConfigurationProperties(PersistenceRoutingProperties.class)
+public class PersistenceRoutingAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public ReplicaSelectionPolicy replicaSelectionPolicy() {
+        return new RoundRobinReplicaSelectionPolicy();
+    }
+
+    /**
+     * DataSource que ven los servicios: el proxy perezoso con el routing dentro (ver
+     * {@link LazyRoutingDataSource}). El routing no se registra como bean aparte para que Spring
+     * Boot no lo trate como otro {@code DataSource} (por ejemplo, en el health check de Actuator).
+     */
+    @Bean
+    @Primary
+    public LazyRoutingDataSource dataSource(PersistenceRoutingProperties properties, ReplicaSelectionPolicy policy) {
+        PersistenceRoutingProperties.Node primaryProps = properties.getPrimary();
+        DataSourceNode primary = node(primaryProps, "primary", DataSourceRole.PRIMARY, primaryProps,
+                properties.getPool());
+
+        List<DataSourceNode> replicas = new ArrayList<>();
+        List<PersistenceRoutingProperties.Node> replicaProps = properties.getReplicas();
+        for (int i = 0; i < replicaProps.size(); i++) {
+            replicas.add(node(replicaProps.get(i), "replica" + (i + 1), DataSourceRole.REPLICA, primaryProps,
+                    properties.getPool()));
+        }
+
+        ReplicaPoolDataSource pool = replicas.isEmpty() ? null : new ReplicaPoolDataSource(replicas, policy);
+        return new LazyRoutingDataSource(new ReadWriteRoutingDataSource(primary, pool));
+    }
+
+    private static DataSourceNode node(PersistenceRoutingProperties.Node props, String defaultName,
+            DataSourceRole role, PersistenceRoutingProperties.Node primaryProps,
+            PersistenceRoutingProperties.Pool poolProps) {
+        String name = StringUtils.hasText(props.getName()) ? props.getName() : defaultName;
+        if (!StringUtils.hasText(props.getUrl())) {
+            throw new IllegalStateException("Falta " + PersistenceRoutingProperties.PREFIX
+                    + (role == DataSourceRole.PRIMARY ? ".primary" : ".replicas[n]") + ".url del nodo " + name);
+        }
+
+        // HikariDataSource creado con el constructor vacío: el pool se inicia con la primera
+        // conexión, así que un nodo caído no impide que el servicio arranque.
+        HikariDataSource hikari = new HikariDataSource();
+        hikari.setPoolName("routing-" + name);
+        hikari.setJdbcUrl(props.getUrl());
+        hikari.setUsername(StringUtils.hasText(props.getUsername()) ? props.getUsername() : primaryProps.getUsername());
+        hikari.setPassword(props.getPassword() != null ? props.getPassword() : primaryProps.getPassword());
+        hikari.setMaximumPoolSize(poolProps.getMaximumPoolSize());
+        hikari.setConnectionTimeout(poolProps.getConnectionTimeout().toMillis());
+        return new DataSourceNode(name, role, hikari);
+    }
+}
