@@ -112,7 +112,9 @@ curl -X DELETE http://127.0.0.1:8080/api/productos/6
 
 ### Persistencia
 
-Cada instancia usa su propia base `productos_db` con el rol `productos_app` (ver [arquitectura](arquitectura.md)). Hoy se conecta solo al primario con un `DataSource` simple, configurado por `DB_URL`, `DB_USER` y `DB_PASSWORD`. Las lecturas están marcadas con `@Transactional(readOnly = true)` y las escrituras con una transacción normal, de modo que al integrar `persistence-routing` (#8) las lecturas se repartirán entre las réplicas sin cambiar el código del servicio.
+Cada instancia usa su propia base, `productos_db`, con el rol `productos_app`, a través del módulo [`persistence-routing`](../persistence-routing/README.md): las escrituras (`POST`, `PUT`, `DELETE` y `PATCH` de stock) van al primario y las lecturas (`GET`, con `@Transactional(readOnly = true)`) se reparten por turnos entre `replica1` y `replica2`. La conexión se configura con `PERSISTENCE_ROUTING_*` en `docker-compose.yml`. Cada decisión queda en el log (`docker compose logs servicio-productos-1 | grep "DB route"`).
+
+Como las réplicas se actualizan con un pequeño retraso, un `GET` inmediatamente después de un `POST` o `PUT` puede devolver todavía el dato anterior (o `404`, si es un producto recién creado). Es el comportamiento esperado de la replicación asíncrona; el `PATCH` de stock no se ve afectado porque descuenta en el primario.
 
 ## servicio-pedidos
 
@@ -199,4 +201,4 @@ No hay transacciones distribuidas ni Sagas. El stock se descuenta en `servicio-p
 
 `servicio-pedidos` usa su propia base, `pedidos_db`, con el rol `pedidos_app`, a través del módulo [`persistence-routing`](../persistence-routing/README.md): las escrituras (`@Transactional`) van al primario y las lecturas (`@Transactional(readOnly = true)`: `GET /pedidos` y `GET /pedidos/{id}`) se reparten por turnos entre `replica1` y `replica2`. La conexión se configura con `PERSISTENCE_ROUTING_*` en `docker-compose.yml`. Cada decisión queda en el log (`docker compose logs servicio-pedidos | grep "DB route"`).
 
-**Limitación pendiente (issue #9):** las réplicas se actualizan con un pequeño retraso, así que un `GET /pedidos/{id}` inmediatamente después de crear el pedido podría atenderlo una réplica que aún no lo tiene y responder `404`. La lectura crítica que lo evita (`@ReadFromPrimary`) está en el PR de la #9 y se aplicará a ese `GET` cuando esté integrada.
+**Lectura crítica:** `GET /pedidos/{id}` se atiende siempre desde el primario (`@ReadFromPrimary`), porque el cliente suele consultar el pedido justo después de crearlo y las réplicas se actualizan con un pequeño retraso. `GET /pedidos` (el listado) sí se reparte entre las réplicas. El log lo marca así: `DB route=PRIMARY node=primary tx=read-only read=critical`.
