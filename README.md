@@ -56,7 +56,7 @@ Detalles, decisiones y tabla de puertos en [docs/arquitectura.md](docs/arquitect
 
 ```bash
 cp .env.example .env        # ajustar las contraseñas
-docker compose up -d
+docker compose up -d primary replica1 replica2   # solo la base de datos
 docker compose ps
 ```
 
@@ -97,9 +97,65 @@ Construir la imagen de un módulo (el contexto de build es la raíz):
 docker build -f discovery-server/Dockerfile -t discovery-server .
 ```
 
-## Ejecución del sistema completo *(pendiente)*
+## Ejecución del sistema completo
 
-Se documentará cuando se integren todos los servicios en `docker-compose.yml`: cómo iniciar, detener, verificar y recuperar cada componente.
+`docker-compose.yml` levanta todo el sistema: Eureka, Gateway, dos instancias de `servicio-productos`, `servicio-pedidos` y la capa PostgreSQL. Hay dos redes: `red_app` (HTTP entre Gateway, Eureka y servicios) y `red_datos` (PostgreSQL). El Gateway solo está en `red_app`; los servicios de negocio están en ambas; la base de datos solo en `red_datos`.
+
+> **Windows con Docker Desktop:** en los ejemplos se usa `127.0.0.1` y no `localhost`. En algunos equipos `localhost` resuelve primero a IPv6 (`::1`) y la solicitud se queda colgada.
+
+### Iniciar
+
+```bash
+cp .env.example .env              # primera vez; ajustar contraseñas y puertos si hace falta
+docker compose up -d --build --wait
+```
+
+`--wait` devuelve el control cuando todos los servicios están saludables (la primera construcción de imágenes tarda varios minutos). El orden de arranque lo controlan los healthchecks: Eureka arranca primero; el Gateway y los servicios de negocio esperan a que esté saludable. Los puertos del host y los identificadores de instancia se configuran en `.env`.
+
+| Servicio | URL en el host |
+|---|---|
+| Eureka (dashboard) | http://127.0.0.1:8761 |
+| Gateway | http://127.0.0.1:8080 |
+| servicio-productos (instancia 1) | http://127.0.0.1:8081 |
+| servicio-productos (instancia 2) | http://127.0.0.1:8082 |
+| servicio-pedidos | http://127.0.0.1:8083 |
+
+Hasta que se implementen los servicios de negocio, `servicio-productos` y `servicio-pedidos` solo arrancan y se registran en Eureka (no exponen endpoints propios).
+
+### Verificar
+
+```bash
+docker compose ps                                    # todos deben figurar como (healthy)
+curl http://127.0.0.1:8080/actuator/health           # salud del Gateway: {"status":"UP",...}
+curl http://127.0.0.1:8080/actuator/gateway/routes   # rutas lb:// cargadas
+curl -H "Accept: application/json" http://127.0.0.1:8761/eureka/apps   # registro en JSON
+```
+
+En el dashboard de Eureka (http://127.0.0.1:8761) deben aparecer `API-GATEWAY`, `SERVICIO-PEDIDOS` y dos instancias de `SERVICIO-PRODUCTOS`, con instanceId `servicio-productos:productos-1` y `servicio-productos:productos-2`. Cada solicitud que pasa por el Gateway queda registrada con la instancia destino:
+
+```bash
+docker compose logs -f api-gateway    # líneas "GW method=GET ... target=servicio-productos-1:8081 ..."
+```
+
+### Detener y recuperar componentes
+
+```bash
+docker compose stop servicio-productos-2     # parada ordenada: Eureka la marca DOWN y la retira en ~10 s
+docker compose start servicio-productos-2    # vuelve a registrarse sola en Eureka (~20-30 s)
+docker compose logs servicio-productos-2     # diagnóstico de una instancia
+docker compose restart servicio-pedidos      # reiniciar un servicio
+```
+
+Mientras una instancia está detenida, el Gateway reparte las solicitudes entre las instancias restantes.
+
+### Detener todo
+
+```bash
+docker compose down        # detiene y elimina contenedores; conserva los datos de PostgreSQL
+docker compose down -v     # además elimina los volúmenes (reinicio desde cero)
+```
+
+Si un puerto del host ya está en uso (`ports are not available`), cambiar el valor correspondiente en `.env` (por ejemplo `GATEWAY_PORT=18080`); el puerto interno de cada contenedor no cambia.
 
 ## Pruebas experimentales P01–P08 *(pendiente)*
 
