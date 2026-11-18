@@ -40,3 +40,8 @@ management:
     web:
       exposure:
         include: health
+
+# El identificador de correlación (X-Request-Id) aparece en cada línea de log.
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"
