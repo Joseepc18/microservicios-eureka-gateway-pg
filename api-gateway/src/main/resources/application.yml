@@ -1,6 +1,45 @@
 spring:
   application:
     name: api-gateway
+  cloud:
+    loadbalancer:
+      cache:
+        # Caché de instancias del LoadBalancer (por defecto 35 s).
+        ttl: 5s
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 10s
+          # Reintentos solo para GET (idempotente) ante instancia caída, timeout o
+          # 502/503/504. Un POST no se reintenta para no duplicar escrituras.
+          # Importante: un filtro Retry declarado dentro de una ruta SE SUMA a este
+          # (no lo reemplaza); no agregar otro Retry a las rutas sin revisar este bloque.
+          default-filters:
+            - name: Retry
+              args:
+                retries: 2
+                methods: GET
+                statuses: BAD_GATEWAY, SERVICE_UNAVAILABLE, GATEWAY_TIMEOUT
+                exceptions: java.io.IOException, java.util.concurrent.TimeoutException
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+                  factor: 2
+          routes:
+            - id: servicio-productos
+              uri: lb://servicio-productos
+              predicates:
+                - Path=/api/productos/**
+              filters:
+                - StripPrefix=1
+            - id: servicio-pedidos
+              uri: lb://servicio-pedidos
+              predicates:
+                - Path=/api/pedidos/**
+              filters:
+                - StripPrefix=1
 
 server:
   port: 8080
@@ -9,10 +48,24 @@ eureka:
   client:
     service-url:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    # Consulta el registro cada 5 s (por defecto 30 s).
     registry-fetch-interval-seconds: 5
   instance:
     instance-id: ${spring.application.name}:${INSTANCE_ID:${random.value}}
+    # Latido cada 5 s y expiración a los 10 s (por defecto 30 s y 90 s).
     lease-renewal-interval-in-seconds: 5
     lease-expiration-duration-in-seconds: 10
 
-spring.cloud.loadbalancer.cache.ttl: 5s
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      probes:
+        enabled: true
+    gateway:
+      # En Spring Boot 3.4+ el acceso por defecto es NONE. Solo lectura: permite consultar
+      # rutas y filtros (/actuator/gateway/routes) sin poder crear ni borrar rutas.
+      access: read-only
