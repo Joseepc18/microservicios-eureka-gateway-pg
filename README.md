@@ -122,7 +122,11 @@ docker compose up -d --build --wait
 | servicio-productos (instancia 2) | http://127.0.0.1:8082 |
 | servicio-pedidos | http://127.0.0.1:8083 |
 
-Hasta que se implementen los servicios de negocio, `servicio-productos` y `servicio-pedidos` solo arrancan y se registran en Eureka (no exponen endpoints propios).
+`servicio-productos` ya expone su API REST (documentada en [docs/api.md](docs/api.md)) y se conecta a `productos_db`. `servicio-pedidos` todavía solo arranca y se registra en Eureka.
+
+```bash
+curl -i http://127.0.0.1:8080/api/productos    # el header X-Instance-Id indica la instancia que respondió
+```
 
 ### Verificar
 
