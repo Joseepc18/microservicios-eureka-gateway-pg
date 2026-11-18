@@ -38,17 +38,44 @@ Detalles, decisiones y tabla de puertos en [docs/arquitectura.md](docs/arquitect
 ├── database/            Scripts de inicialización del primario y las réplicas
 ├── docs/                Arquitectura, plan de trabajo, informe de pruebas y material de referencia
 ├── requests/            Colección de solicitudes HTTP (pendiente)
-├── discovery-server/    Eureka Server (pendiente)
-├── api-gateway/         Spring Cloud Gateway (pendiente)
-├── servicio-productos/  Microservicio de catálogo e inventario (pendiente)
-├── servicio-pedidos/    Microservicio de pedidos (pendiente)
+├── discovery-server/    Eureka Server
+├── api-gateway/         Spring Cloud Gateway
+├── servicio-productos/  Microservicio de catálogo e inventario
+├── servicio-pedidos/    Microservicio de pedidos
+├── persistence-routing/ Librería compartida de enrutamiento de datos (sin clase main)
+├── pom.xml              POM padre (Java 21, Spring Boot, Spring Cloud)
+├── mvnw, mvnw.cmd       Maven Wrapper (no hace falta instalar Maven)
 └── docker-compose.yml   Despliegue reproducible
 ```
 
 ## Requisitos
 
 - Docker y Docker Compose.
-- Java 21 y Maven (solo para compilar los servicios fuera de Docker).
+- Java 21 (solo para compilar los servicios fuera de Docker). Maven no se instala: se usa el wrapper `mvnw`.
+
+## Compilación
+
+Desde la raíz del repositorio:
+
+```bash
+./mvnw -q clean verify      # compila todos los módulos y ejecuta sus pruebas
+```
+
+En Windows (PowerShell o cmd) se usa `mvnw.cmd` en lugar de `./mvnw`.
+
+Ejecutar un módulo de forma aislada (necesita Java 21):
+
+```bash
+./mvnw -pl discovery-server -am spring-boot:run
+```
+
+Los módulos ejecutables son `discovery-server`, `api-gateway`, `servicio-productos` y `servicio-pedidos`; `persistence-routing` es solo una librería.
+
+Construir la imagen Docker de un módulo (el contexto es siempre la raíz del repositorio):
+
+```bash
+docker build -f discovery-server/Dockerfile -t discovery-server .
+```
 
 ## Inicio rápido: capa de base de datos
 
