@@ -60,7 +60,9 @@ docker compose up -d primary replica1 replica2   # solo la base de datos
 docker compose ps
 ```
 
-Debe verse `primary`, `replica1` y `replica2` en estado *running*. Las pruebas manuales de replicación están en [docs/referencia/pg-pruebas-replicacion.md](docs/referencia/pg-pruebas-replicacion.md).
+Debe verse `primary`, `replica1` y `replica2` en estado *healthy*. Las pruebas manuales de replicación están en [docs/referencia/pg-pruebas-replicacion.md](docs/referencia/pg-pruebas-replicacion.md).
+
+Al inicializarse, el primario crea una base y un rol por servicio (`productos_db`/`productos_app` y `pedidos_db`/`pedidos_app`, con claves `PRODUCTOS_DB_PASSWORD` y `PEDIDOS_DB_PASSWORD` en `.env`) y un slot de replicación por réplica. El esquema, el aislamiento y los datos de conexión están en [docs/arquitectura.md](docs/arquitectura.md#base-de-datos-bases-roles-y-replicación). Si tu laboratorio se creó antes de este esquema, recréalo con `docker compose down -v`.
 
 Detener sin borrar datos:
 
