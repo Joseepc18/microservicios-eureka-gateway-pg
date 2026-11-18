@@ -147,7 +147,7 @@ Una réplica está **apta** si responde, sigue en modo recuperación (`pg_is_in_
 | Paso | Qué hace | Clase |
 |---|---|---|
 | **Detección** | Cada `interval` se verifica cada réplica con una conexión directa a su pool, sin pasar por el enrutamiento: no consume turnos del round-robin ni deja líneas `DB route`. Tras `failure-threshold` verificaciones no aptas seguidas, la réplica se marca como caída. | `ReplicaHealthMonitor`, `JdbcReplicaProbe` |
-| **Exclusión inmediata** | Si una lectura no puede obtener conexión de la réplica que le tocó, esa réplica sale de la rotación en el acto y la lectura se hace en la siguiente disponible. Es el caso de `docker compose stop replica1`: la lectura no falla. | `ReplicaPoolDataSource` |
+| **Exclusión inmediata** | Si una lectura no puede obtener conexión de la réplica que le tocó, esa réplica sale de la rotación en el acto y la lectura se hace en la siguiente disponible. Es el caso de `docker compose stop replica1`: la lectura no falla, aunque espera hasta `connection-timeout` (ver Limitaciones). | `ReplicaPoolDataSource` |
 | **Reintento** | Si la réplica cae **a mitad** de una lectura, el método `@Transactional(readOnly = true)` se repite (`read-retry.max-attempts`) en una transacción nueva, que va a otra réplica. Solo se reintentan los errores de conexión (SQLState `08xxx`), no los de la consulta, y solo la transacción más externa. Repetir una lectura no tiene efectos secundarios. | `ReadOnlyRetryInterceptor` |
 | **Sin réplicas sanas** | Las lecturas se **degradan al primario**, con un aviso en el log. | `ReplicaPoolDataSource` |
 | **Reincorporación** | La primera verificación apta devuelve la réplica a la rotación. Como exige el retraso bajo `max-lag`, una réplica que vuelve tras una parada solo recibe lecturas cuando se puso al día. | `ReplicaHealthMonitor` |
@@ -217,7 +217,7 @@ ReplicaSelectionPolicy replicaSelectionPolicy() {
 
 - **Primario caído:** no hay promoción automática ni failover (el proyecto no lo exige). Las escrituras y las lecturas críticas fallan mientras el primario no responda.
 - **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde la conexión con el primario, deja de recibir WAL sin que su retraso medido crezca, porque ya aplicó todo lo que recibió. Sus lecturas quedarían desactualizadas hasta que se reconecte. En este proyecto solo ocurre si cae el primario.
-- **Nodo que no responde:** si el contenedor existe pero no contesta, la primera lectura espera hasta `connection-timeout` antes de excluirlo. Con el contenedor detenido (`docker compose stop`), el nombre deja de resolverse y la exclusión es inmediata.
+- **Primera lectura tras una caída:** la lectura a la que le toca la réplica caída espera hasta `connection-timeout` (3 s por defecto) mientras el pool intenta reconectar; después la réplica se excluye y esa lectura se atiende en otra réplica, sin error. Las lecturas siguientes ya no esperan. Se observó así con `docker stop` sobre el clúster real: la lectura tardó unos 3 s. Bajar `connection-timeout` acorta esa espera, a cambio de excluir antes una réplica sana cuando el pool está saturado.
 - **Pool agotado:** un tiempo de espera agotado al pedir una conexión también excluye la réplica; vuelve en la siguiente verificación apta.
 - **Reintento:** solo cubre la transacción de solo lectura más externa. Una lectura que participa en una transacción ya abierta propaga el error a quien abrió la transacción.
 
