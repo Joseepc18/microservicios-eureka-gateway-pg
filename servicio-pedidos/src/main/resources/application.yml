@@ -1,12 +1,6 @@
 spring:
   application:
     name: servicio-pedidos
-  datasource:
-    # Conexión simple al primario hasta que se integre persistence-routing (issues #8 y #9).
-    # En Docker Compose la URL apunta al servicio "primary"; la clave nunca se versiona.
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/pedidos_db}
-    username: ${DB_USER:pedidos_app}
-    password: ${DB_PASSWORD:}
   jpa:
     open-in-view: false
     hibernate:
@@ -19,6 +13,16 @@ spring:
       cache:
         # Caché de instancias del LoadBalancer (por defecto 35 s).
         ttl: 5s
+
+# Enrutamiento de persistencia (módulo persistence-routing): escrituras al primario y lecturas
+# readOnly repartidas entre las réplicas. Las réplicas se declaran por variables de entorno
+# (PERSISTENCE_ROUTING_REPLICAS_n_URL, ver docker-compose.yml); sin réplicas, todo va al primario.
+persistence:
+  routing:
+    primary:
+      url: ${DB_URL:jdbc:postgresql://localhost:5432/pedidos_db}
+      username: ${DB_USER:pedidos_app}
+      password: ${DB_PASSWORD:}
 
 server:
   port: ${SERVER_PORT:8083}

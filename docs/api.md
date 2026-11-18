@@ -197,4 +197,6 @@ No hay transacciones distribuidas ni Sagas. El stock se descuenta en `servicio-p
 
 ### Persistencia
 
-Cada servicio usa su propia base: `pedidos_db` con el rol `pedidos_app`. Hoy se conecta solo al primario con un `DataSource` simple (`DB_URL`, `DB_USER`, `DB_PASSWORD`). Las lecturas están marcadas `readOnly` y las escrituras con transacción normal. Pendiente de `persistence-routing` (#8 y #9): que las lecturas vayan a las réplicas y que `GET /pedidos/{id}` justo después de crear use la lectura crítica al primario.
+`servicio-pedidos` usa su propia base, `pedidos_db`, con el rol `pedidos_app`, a través del módulo [`persistence-routing`](../persistence-routing/README.md): las escrituras (`@Transactional`) van al primario y las lecturas (`@Transactional(readOnly = true)`: `GET /pedidos` y `GET /pedidos/{id}`) se reparten por turnos entre `replica1` y `replica2`. La conexión se configura con `PERSISTENCE_ROUTING_*` en `docker-compose.yml`. Cada decisión queda en el log (`docker compose logs servicio-pedidos | grep "DB route"`).
+
+**Limitación pendiente (issue #9):** las réplicas se actualizan con un pequeño retraso, así que un `GET /pedidos/{id}` inmediatamente después de crear el pedido podría atenderlo una réplica que aún no lo tiene y responder `404`. La lectura crítica que lo evita (`@ReadFromPrimary`) está en el PR de la #9 y se aplicará a ese `GET` cuando esté integrada.

@@ -37,12 +37,14 @@ x-productos-db-env: &productos-db-env
   DB_USER: productos_app
   DB_PASSWORD: ${PRODUCTOS_DB_PASSWORD:?Defina PRODUCTOS_DB_PASSWORD en el archivo .env}
 
-# Conexión de servicio-pedidos a su base (rol pedidos_app creado por primary-init.sh).
-# Conexión simple al primario hasta que se integre persistence-routing (issues #8 y #9).
+# Persistencia de servicio-pedidos con persistence-routing: escrituras al primario y lecturas
+# readOnly repartidas entre las réplicas (rol pedidos_app, que se replica por WAL a las réplicas).
 x-pedidos-db-env: &pedidos-db-env
-  DB_URL: jdbc:postgresql://primary:5432/pedidos_db
-  DB_USER: pedidos_app
-  DB_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Defina PEDIDOS_DB_PASSWORD en el archivo .env}
+  PERSISTENCE_ROUTING_PRIMARY_URL: jdbc:postgresql://primary:5432/pedidos_db
+  PERSISTENCE_ROUTING_PRIMARY_USERNAME: pedidos_app
+  PERSISTENCE_ROUTING_PRIMARY_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Defina PEDIDOS_DB_PASSWORD en el archivo .env}
+  PERSISTENCE_ROUTING_REPLICAS_0_URL: jdbc:postgresql://replica1:5432/pedidos_db
+  PERSISTENCE_ROUTING_REPLICAS_1_URL: jdbc:postgresql://replica2:5432/pedidos_db
 
 services:
   # ---------------------------------------------------------------- Descubrimiento
