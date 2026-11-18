@@ -1,0 +1,21 @@
+# Control de versiones y entorno
+.git
+.github
+.gitignore
+.gitattributes
+.env
+.env.*
+
+# Artefactos de compilación e IDE
+**/target
+.idea
+.vscode
+*.iml
+
+# Archivos que no intervienen en la compilación
+docs
+database
+docker-compose.yml
+README.md
+CONTRIBUTING.md
+**/Dockerfile
