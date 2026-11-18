@@ -21,6 +21,20 @@ Eureka administra el descubrimiento de microservicios. No administra las réplic
 4. **Sin failover automático** del primario ni transacciones distribuidas (fuera del alcance de la actividad).
 5. **Stack:** Java 21, Spring Boot 3.x, Spring Cloud, Maven multi-módulo.
 
+## Módulos, nombres lógicos y versiones
+
+Proyecto Maven multi-módulo (`pom.xml` en la raíz). Los nombres lógicos de Eureka coinciden con `spring.application.name` y no deben cambiarse, porque las rutas `lb://` dependen de ellos.
+
+| Módulo Maven | `spring.application.name` | Tipo |
+|---|---|---|
+| `discovery-server` | `discovery-server` | Aplicación (Eureka Server) |
+| `api-gateway` | `api-gateway` | Aplicación (Gateway) |
+| `servicio-productos` | `servicio-productos` | Aplicación |
+| `servicio-pedidos` | `servicio-pedidos` | Aplicación |
+| `persistence-routing` | — | Librería compartida (sin `main`) |
+
+Versiones: Java 21, Spring Boot 3.5.16 y Spring Cloud 2025.0.3 (`2025.0.x` es el release train compatible con Spring Boot 3.5.x; la serie `2025.1.x` corresponde a Spring Boot 4). Paquete base: `ec.edu.upse.distribuidas`.
+
 ## Puertos
 
 | Servicio | Puerto en el host |

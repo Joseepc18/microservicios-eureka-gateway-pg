@@ -48,7 +48,7 @@ Detalles, decisiones y tabla de puertos en [docs/arquitectura.md](docs/arquitect
 ## Requisitos
 
 - Docker y Docker Compose.
-- Java 21 y Maven (solo para compilar los servicios fuera de Docker).
+- Java 21 (solo para compilar fuera de Docker). No hace falta instalar Maven: el repositorio incluye Maven Wrapper (`mvnw`).
 
 ## Inicio rápido: capa de base de datos
 
@@ -70,6 +70,29 @@ Reiniciar el laboratorio desde cero (elimina los volúmenes):
 
 ```bash
 docker compose down -v
+```
+
+## Compilación
+
+Desde la raíz del repositorio (Linux, macOS o Git Bash):
+
+```bash
+./mvnw clean verify
+```
+
+En PowerShell o CMD: `.\mvnw.cmd clean verify`. Compila los cinco módulos y ejecuta sus pruebas. La primera vez descarga Maven automáticamente.
+
+Compilar o ejecutar un solo módulo:
+
+```bash
+./mvnw -pl discovery-server -am package
+java -jar discovery-server/target/discovery-server-0.1.0-SNAPSHOT.jar
+```
+
+Construir la imagen de un módulo (el contexto de build es la raíz):
+
+```bash
+docker build -f discovery-server/Dockerfile -t discovery-server .
 ```
 
 ## Ejecución del sistema completo *(pendiente)*
