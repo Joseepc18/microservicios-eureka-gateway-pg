@@ -6,6 +6,3 @@
 .env
 docs/
 database/
-CLAUDE.md
-CLAUDE.local.md
-.claude/
