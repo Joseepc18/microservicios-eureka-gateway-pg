@@ -1,0 +1,27 @@
+# Secretos y entorno local
+.env
+*.env.local
+
+# Maven / Java
+target/
+*.class
+*.jar
+*.log
+hs_err_pid*
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Evidencias pesadas (los videos se publican con enlace, no se versionan)
+*.mp4
+*.mov
+*.mkv
