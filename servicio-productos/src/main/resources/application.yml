@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: servicio-productos
+
+server:
+  # Cada instancia recibe su puerto por variable de entorno (8081 y 8082 en el host).
+  port: ${SERVER_PORT:8081}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
