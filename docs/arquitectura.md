@@ -104,7 +104,7 @@ Los servicios de negocio están en la red `red_datos` y llegan a PostgreSQL por 
 | `replica1` | Lecturas ordinarias | `jdbc:postgresql://replica1:5432/productos_db` |
 | `replica2` | Lecturas ordinarias | `jdbc:postgresql://replica2:5432/productos_db` |
 
-Usuario: `productos_app` (o `pedidos_app` con `pedidos_db`). Clave: `${PRODUCTOS_DB_PASSWORD}` (o `${PEDIDOS_DB_PASSWORD}`). Las propiedades con que el módulo `persistence-routing` recibe estos datos se definen en la issue #8 y se documentan en su `README.md`.
+Usuario: `productos_app` (o `pedidos_app` con `pedidos_db`). Clave: `${PRODUCTOS_DB_PASSWORD}` (o `${PEDIDOS_DB_PASSWORD}`). El módulo `persistence-routing` recibe estos datos con las propiedades `persistence.routing.*` (o sus variables de entorno `PERSISTENCE_ROUTING_*`), documentadas en su [README](../persistence-routing/README.md).
 
 Desde el host se puede entrar a cada nodo por los puertos `5432`, `5433` y `5434` (ver [Puertos](#puertos)).
 
