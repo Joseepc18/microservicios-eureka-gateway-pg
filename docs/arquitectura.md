@@ -35,6 +35,25 @@ Proyecto Maven multi-módulo (`pom.xml` en la raíz). Los nombres lógicos de Eu
 
 Versiones: Java 21, Spring Boot 3.5.16 y Spring Cloud 2025.0.3 (`2025.0.x` es el release train compatible con Spring Boot 3.5.x; la serie `2025.1.x` corresponde a Spring Boot 4). Paquete base: `ec.edu.upse.distribuidas`.
 
+## Eureka: configuración y tiempos de detección
+
+`discovery-server` corre en el puerto `8761` como servidor único (`register-with-eureka=false`, `fetch-registry=false`). Dashboard: `http://localhost:8761`. Registro en JSON: `http://localhost:8761/eureka/apps` (con el header `Accept: application/json`). Salud: `/actuator/health`.
+
+Tiempos ajustados para que una caída sea visible durante la demo (los valores por defecto de Eureka son mucho mayores):
+
+| Parámetro | Defecto | Valor |
+|---|---|---|
+| Latido del cliente (`lease-renewal-interval-in-seconds`) | 30 s | 5 s |
+| Expiración de la instancia (`lease-expiration-duration-in-seconds`) | 90 s | 10 s |
+| Evicción en el servidor (`eviction-interval-timer-in-ms`) | 60 s | 5 s |
+| Caché de respuesta del servidor (`response-cache-update-interval-ms`) | 30 s | 3 s |
+| Consulta del registro por el cliente (`registry-fetch-interval-seconds`) | 30 s | 5 s |
+| Caché de instancias del LoadBalancer (`spring.cloud.loadbalancer.cache.ttl`) | 35 s | 5 s (gateway y pedidos) |
+
+La autopreservación (`enable-self-preservation`) está desactivada: con pocas instancias, Eureka dejaría de expulsar las caídas. Es una decisión de laboratorio; en producción se mantendría activada.
+
+**Medición:** al terminar de forma abrupta una instancia de `servicio-productos` (sin darse de baja), Eureka la expulsó del registro a los ~24 s. Durante esa ventana, el Gateway puede seguir enviando solicitudes a la instancia caída; por eso se esperan errores transitorios (se tratan en P03). Una parada ordenada (`docker compose stop`) sí se da de baja de inmediato.
+
 ## Puertos
 
 | Servicio | Puerto en el host |
