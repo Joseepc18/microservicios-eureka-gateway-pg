@@ -77,6 +77,88 @@ La autopreservación (`enable-self-preservation`) está desactivada. Cuando est�
 
 **Verificación manual (procesos locales):** con dos instancias de `servicio-productos` (8081 y 8082), 10 solicitudes alternaron entre ambas. Al terminar de golpe la instancia 8081, las 10 solicitudes siguientes se atendieron por 8082 sin error de Gateway y, pasado el tiempo de expulsión, todas fueron a 8082.
 
+## Base de datos: bases, roles y replicación
+
+Un único clúster PostgreSQL 17: el primario (`primary`) y dos réplicas físicas (`replica1` y `replica2`) con streaming WAL asíncrono. Todo lo que se describe aquí lo crea [`database/primary-init.sh`](../database/primary-init.sh) al inicializar el primario y llega a las réplicas por WAL, sin pasos manuales.
+
+### Bases y roles
+
+| Base | Rol (dueño) | Usado por | Variable con la clave (`.env`) |
+|---|---|---|---|
+| `productos_db` | `productos_app` | `servicio-productos` | `PRODUCTOS_DB_PASSWORD` |
+| `pedidos_db` | `pedidos_app` | `servicio-pedidos` | `PEDIDOS_DB_PASSWORD` |
+| `laboratorio` | `admin` (superusuario, `POSTGRES_USER`) | Administración y pruebas manuales | `POSTGRES_PASSWORD` |
+| — | `replicator` (solo `REPLICATION`) | Réplicas (`pg_basebackup` y streaming) | `REPLICATION_PASSWORD` |
+
+- Cada rol de servicio es **dueño de su base**: puede crear y modificar sus tablas (por ejemplo con JPA o Flyway) sin permisos extra.
+- **Aislamiento:** se revocó a `PUBLIC` el permiso `CONNECT` sobre `productos_db`, `pedidos_db`, `postgres`, `laboratorio` y `template1` (`template0` no admite conexiones). Así `productos_app` solo puede conectarse a `productos_db`, y `pedidos_app` solo a `pedidos_db`. Cualquier otro intento falla con `permission denied for database ... User does not have CONNECT privilege`, tanto en el primario como en las réplicas, porque los permisos también se replican.
+- Los nombres de bases y roles son fijos. Solo las claves salen del `.env` (ver `.env.example`).
+
+### Datos de conexión para los servicios
+
+Los servicios de negocio están en la red `red_datos` y llegan a PostgreSQL por el nombre del servicio de Compose, siempre en el puerto interno `5432`:
+
+| Nodo | Uso | URL JDBC (ejemplo con `productos_db`) |
+|---|---|---|
+| `primary` | Escrituras y lecturas críticas | `jdbc:postgresql://primary:5432/productos_db` |
+| `replica1` | Lecturas ordinarias | `jdbc:postgresql://replica1:5432/productos_db` |
+| `replica2` | Lecturas ordinarias | `jdbc:postgresql://replica2:5432/productos_db` |
+
+Usuario: `productos_app` (o `pedidos_app` con `pedidos_db`). Clave: `${PRODUCTOS_DB_PASSWORD}` (o `${PEDIDOS_DB_PASSWORD}`). Las propiedades con que el módulo `persistence-routing` recibe estos datos se definen en la issue #8 y se documentan en su `README.md`.
+
+Desde el host se puede entrar a cada nodo por los puertos `5432`, `5433` y `5434` (ver [Puertos](#puertos)).
+
+### Retención de WAL: slots de replicación
+
+Cuando una réplica se detiene, el primario tiene que conservar el WAL que esa réplica no recibió. Si no lo hace, la réplica no puede ponerse al día al volver (P08). Se evaluaron dos opciones:
+
+| | `wal_keep_size` (configuración anterior: 256 MB) | Slots de replicación (elegida) |
+|---|---|---|
+| Qué retiene | Un tamaño fijo de WAL, esté o no caída alguna réplica | Exactamente el WAL que cada réplica aún no confirmó |
+| Réplica caída mucho tiempo | Si se generan más de 256 MB, el WAL se borra y la réplica **no puede recuperarse** (`requested WAL segment ... has already been removed`) | Se recupera sola mientras no se supere el tope |
+| Riesgo | Pérdida de la réplica | **Acumulación de WAL** en el disco del primario mientras la réplica está caída |
+
+**Decisión:** un slot físico por réplica (`replica1` y `replica2`), creado en `primary-init.sh` con `immediately_reserve = true` para que retenga WAL desde el primer momento. Cada réplica lo usa con `pg_basebackup -S`, y `-R` deja `primary_slot_name` en su configuración. El riesgo de acumulación se acota con **`max_slot_wal_keep_size = 1GB`**: si una réplica caída deja retenido más de 1 GB, PostgreSQL invalida su slot y libera el WAL, protegiendo el disco del primario a costa de esa réplica.
+
+Estado de los slots (cuánto WAL retiene cada uno y si sigue siendo válido):
+
+```bash
+docker compose exec primary psql -U admin -d laboratorio \
+  -c "SELECT slot_name, active, wal_status, safe_wal_size, restart_lsn FROM pg_replication_slots;"
+```
+
+`wal_status` es `reserved` en condiciones normales, `extended` o `unreserved` si se acerca al tope, y `lost` si el slot se invalidó. Una réplica con el slot en `lost` no puede ponerse al día y hay que reconstruirla desde una copia nueva. Se reconstruye así (borra solo el volumen de esa réplica; el slot sigue existiendo en el primario):
+
+```bash
+docker compose rm -sf replica1
+docker volume rm microservicios-eureka-gateway-pg_replica1_data
+docker compose exec primary psql -U admin -d laboratorio \
+  -c "SELECT pg_drop_replication_slot('replica1'); SELECT pg_create_physical_replication_slot('replica1', true);"
+docker compose up -d replica1
+```
+
+(El prefijo del volumen es el nombre del proyecto de Compose; `docker volume ls` lo muestra.)
+
+Cada réplica se conecta con `application_name` igual a su slot, así que `pg_stat_replication` muestra `replica1` y `replica2` en lugar de `walreceiver`.
+
+### Healthchecks
+
+| Nodo | Se considera saludable cuando |
+|---|---|
+| `primary` | `pg_isready` responde |
+| `replica1`, `replica2` | `pg_isready` responde **y** `pg_is_in_recovery()` devuelve `true`, es decir, sigue siendo standby y no fue promovida |
+
+El healthcheck de las réplicas usa el socket local con el usuario `POSTGRES_USER`, que la imagen acepta sin clave dentro del contenedor. Por eso las réplicas reciben `POSTGRES_USER` y `POSTGRES_DB` en Compose; no inicializan nada con ellas.
+
+### Inicialización y cambios
+
+`primary-init.sh` solo se ejecuta cuando el volumen del primario está vacío. Si ya existía un laboratorio creado antes de este esquema, hay que recrearlo para obtener las bases, los roles y los slots:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
 ## Puertos
 
 | Servicio | Puerto en el host |
@@ -86,9 +168,9 @@ La autopreservación (`enable-self-preservation`) está desactivada. Cuando est�
 | servicio-productos (instancia 1) | 8081 |
 | servicio-productos (instancia 2) | 8082 |
 | servicio-pedidos | 8083 |
-| PostgreSQL primario | 5432 |
-| PostgreSQL réplica 1 | 5433 |
-| PostgreSQL réplica 2 | 5434 |
+| PostgreSQL primario | 5432 (interno `primary:5432`) |
+| PostgreSQL réplica 1 | 5433 (interno `replica1:5432`) |
+| PostgreSQL réplica 2 | 5434 (interno `replica2:5432`) |
 
 ## Diagrama
 

@@ -140,7 +140,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en el archivo .env}
       POSTGRES_DB: ${POSTGRES_DB:-laboratorio}
       REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:?Defina REPLICATION_PASSWORD en el archivo .env}
-    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "wal_keep_size=256MB", "-c", "hot_standby=on"]
+      # Claves de los roles productos_app y pedidos_app (las usa primary-init.sh).
+      PRODUCTOS_DB_PASSWORD: ${PRODUCTOS_DB_PASSWORD:?Defina PRODUCTOS_DB_PASSWORD en el archivo .env}
+      PEDIDOS_DB_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Defina PEDIDOS_DB_PASSWORD en el archivo .env}
+    # Retención de WAL con slots de replicación (uno por réplica, creados en primary-init.sh).
+    # max_slot_wal_keep_size limita el WAL que un slot puede retener si su réplica está caída;
+    # superado el tope, el slot se invalida y esa réplica debe reconstruirse (docs/arquitectura.md).
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10", "-c", "max_slot_wal_keep_size=1GB", "-c", "hot_standby=on"]
     volumes:
       - primary_data:/var/lib/postgresql/data
       - ./database/primary-init.sh:/docker-entrypoint-initdb.d/01-replication.sh:ro
@@ -160,14 +166,20 @@ services:
     environment:
       PGDATA: /var/lib/postgresql/data
       PGPASSWORD: ${REPLICATION_PASSWORD:?Defina REPLICATION_PASSWORD en el archivo .env}
+      REPLICATION_SLOT: replica1
+      # Solo para el healthcheck: el entrypoint propio no inicializa nada con estas variables.
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_DB: ${POSTGRES_DB:-laboratorio}
     entrypoint: ["/bin/bash", "/scripts/start-replica.sh"]
     volumes:
       - replica1_data:/var/lib/postgresql/data
       - ./database/start-replica.sh:/scripts/start-replica.sh:ro
     ports:
       - "5433:5432"
+    # Saludable = acepta conexiones y sigue en modo standby (pg_is_in_recovery() = true).
+    # Usa el socket local, donde la imagen confía en los usuarios del contenedor (sin clave).
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" && [ \"$$(psql -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" -tAc 'SELECT pg_is_in_recovery()')\" = t ]"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -184,14 +196,20 @@ services:
     environment:
       PGDATA: /var/lib/postgresql/data
       PGPASSWORD: ${REPLICATION_PASSWORD:?Defina REPLICATION_PASSWORD en el archivo .env}
+      REPLICATION_SLOT: replica2
+      # Solo para el healthcheck: el entrypoint propio no inicializa nada con estas variables.
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_DB: ${POSTGRES_DB:-laboratorio}
     entrypoint: ["/bin/bash", "/scripts/start-replica.sh"]
     volumes:
       - replica2_data:/var/lib/postgresql/data
       - ./database/start-replica.sh:/scripts/start-replica.sh:ro
     ports:
       - "5434:5432"
+    # Saludable = acepta conexiones y sigue en modo standby (pg_is_in_recovery() = true).
+    # Usa el socket local, donde la imagen confía en los usuarios del contenedor (sin clave).
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" && [ \"$$(psql -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" -tAc 'SELECT pg_is_in_recovery()')\" = t ]"]
       interval: 5s
       timeout: 3s
       retries: 30
