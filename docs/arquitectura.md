@@ -91,7 +91,7 @@ Un único clúster PostgreSQL 17: el primario (`primary`) y dos réplicas físic
 | — | `replicator` (solo `REPLICATION`) | Réplicas (`pg_basebackup` y streaming) | `REPLICATION_PASSWORD` |
 
 - Cada rol de servicio es **dueño de su base**: puede crear y modificar sus tablas (por ejemplo con JPA o Flyway) sin permisos extra.
-- **Aislamiento:** se revocó a `PUBLIC` el permiso `CONNECT` sobre `productos_db`, `pedidos_db`, `postgres` y `laboratorio`. Así `productos_app` solo puede conectarse a `productos_db`, y `pedidos_app` solo a `pedidos_db`. Cualquier otro intento falla con `permission denied for database ... User does not have CONNECT privilege`, tanto en el primario como en las réplicas, porque los permisos también se replican.
+- **Aislamiento:** se revocó a `PUBLIC` el permiso `CONNECT` sobre `productos_db`, `pedidos_db`, `postgres`, `laboratorio` y `template1` (`template0` no admite conexiones). Así `productos_app` solo puede conectarse a `productos_db`, y `pedidos_app` solo a `pedidos_db`. Cualquier otro intento falla con `permission denied for database ... User does not have CONNECT privilege`, tanto en el primario como en las réplicas, porque los permisos también se replican.
 - Los nombres de bases y roles son fijos. Solo las claves salen del `.env` (ver `.env.example`).
 
 ### Datos de conexión para los servicios

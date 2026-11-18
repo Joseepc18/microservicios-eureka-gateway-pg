@@ -33,6 +33,9 @@ REVOKE ALL ON DATABASE productos_db FROM PUBLIC;
 REVOKE ALL ON DATABASE pedidos_db FROM PUBLIC;
 REVOKE ALL ON DATABASE postgres FROM PUBLIC;
 SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'admin_db') \gexec
+-- template1 también admite conexiones de cualquier rol. Las bases nuevas no heredan su ACL,
+-- así que revocarlo no afecta a CREATE DATABASE. (template0 no admite conexiones.)
+REVOKE ALL ON DATABASE template1 FROM PUBLIC;
 SQL
 
 # Permite las conexiones de replicación del rol replicator desde la red de Docker. La línea
