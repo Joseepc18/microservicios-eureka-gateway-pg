@@ -81,6 +81,7 @@ Todos los errores usan el mismo cuerpo JSON:
 | `400` | Validación fallida, JSON malformado o id no numérico. En validación, `message` lista los campos inválidos |
 | `404` | El producto o la ruta no existen |
 | `405` | Método HTTP no permitido en esa ruta |
+| `415` | `Content-Type` no soportado (el cuerpo debe ser `application/json`) |
 | `409` | Stock insuficiente |
 | `500` | Error inesperado (el detalle solo queda en el log del servicio) |
 

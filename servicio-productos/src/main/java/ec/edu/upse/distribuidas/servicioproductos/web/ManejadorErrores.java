@@ -67,6 +67,11 @@ public class ManejadorErrores {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> inesperado(Exception ex, HttpServletRequest req) {
+        // Las excepciones web de Spring (415, 406, parámetros faltantes, etc.) ya traen su código HTTP.
+        if (ex instanceof org.springframework.web.ErrorResponse web) {
+            HttpStatus estado = HttpStatus.valueOf(web.getStatusCode().value());
+            return responder(estado, estado.getReasonPhrase(), req);
+        }
         log.error("Error no controlado en {}", req.getRequestURI(), ex);
         return responder(HttpStatus.INTERNAL_SERVER_ERROR, "Error interno del servidor", req);
     }

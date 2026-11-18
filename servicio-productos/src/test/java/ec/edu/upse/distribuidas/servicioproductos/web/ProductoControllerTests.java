@@ -142,6 +142,13 @@ class ProductoControllerTests {
     }
 
     @Test
+    void tipoDeContenidoNoSoportadoDevuelve415() throws Exception {
+        mvc.perform(post("/productos").contentType(MediaType.TEXT_PLAIN).content("hola"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.status").value(415));
+    }
+
+    @Test
     void errorInesperadoDevuelve500SinDetallesInternos() throws Exception {
         when(servicio.listar()).thenThrow(new IllegalStateException("detalle interno"));
 
