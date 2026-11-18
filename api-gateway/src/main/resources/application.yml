@@ -57,6 +57,10 @@ management:
       exposure:
         include: health,info,gateway
   endpoint:
+    # Con Spring Boot 3.4+ el endpoint gateway llega con acceso NONE; sin esto
+    # /actuator/gateway/routes responde 404 aunque esté expuesto.
+    gateway:
+      access: unrestricted
     health:
       probes:
         enabled: true
