@@ -1,10 +1,14 @@
 package ec.edu.upse.distribuidas.persistencerouting;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import javax.sql.DataSource;
 
@@ -13,10 +17,12 @@ import org.springframework.boot.actuate.autoconfigure.health.HealthContributorAu
 import org.springframework.boot.actuate.autoconfigure.jdbc.DataSourceHealthContributorAutoConfiguration;
 import org.springframework.boot.actuate.jdbc.DataSourceHealthIndicator;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
 
 import com.zaxxer.hikari.HikariDataSource;
@@ -27,9 +33,13 @@ import com.zaxxer.hikari.HikariDataSource;
  */
 class PersistenceRoutingAutoConfigurationTests {
 
+    /** Sonda falsa: las pruebas no abren conexiones reales, tampoco el monitor de réplicas. */
+    private static final ReplicaProbe HEALTHY = replica -> new ReplicaProbe.Status(true, 0);
+
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(PersistenceRoutingAutoConfiguration.class,
-                    DataSourceAutoConfiguration.class));
+                    DataSourceAutoConfiguration.class))
+            .withBean(ReplicaProbe.class, () -> HEALTHY);
 
     private static final String[] PROPERTIES = {
             "persistence.routing.primary.url=jdbc:postgresql://primary:5432/productos_db",
@@ -118,6 +128,7 @@ class PersistenceRoutingAutoConfigurationTests {
                 "PERSISTENCE_ROUTING_REPLICAS_0_URL", "jdbc:postgresql://replica1:5432/pedidos_db");
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(PersistenceRoutingAutoConfiguration.class))
+                .withBean(ReplicaProbe.class, () -> HEALTHY)
                 .withInitializer(context -> context.getEnvironment().getPropertySources()
                         .addFirst(new SystemEnvironmentPropertySource("test-systemEnvironment", env)))
                 .run(context -> {
@@ -139,6 +150,78 @@ class PersistenceRoutingAutoConfigurationTests {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean("dbHealthContributor")).isInstanceOf(DataSourceHealthIndicator.class);
+                });
+    }
+
+    @Test
+    void startsTheReplicaHealthMonitorWithTheContext() throws InterruptedException {
+        List<String> probed = new CopyOnWriteArrayList<>();
+        CountDownLatch bothChecked = new CountDownLatch(2);
+        ReplicaProbe probe = replica -> {
+            probed.add(replica.getName());
+            bothChecked.countDown();
+            return new ReplicaProbe.Status(true, 0);
+        };
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(PersistenceRoutingAutoConfiguration.class))
+                .withBean(ReplicaProbe.class, () -> probe)
+                .withPropertyValues(PROPERTIES)
+                .withPropertyValues("persistence.routing.health.interval=1h")
+                .run(context -> {
+                    assertThat(context.getBean(ReplicaHealthMonitor.class).isRunning()).isTrue();
+                    assertThat(bothChecked.await(5, TimeUnit.SECONDS)).isTrue();
+                    assertThat(probed).containsExactly("replica1", "replica2");
+                    assertThat(routing(context).getReplicaPool().getAvailableReplicas()).hasSize(2);
+                });
+    }
+
+    @Test
+    void usesTheJdbcProbeByDefault() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(PersistenceRoutingAutoConfiguration.class))
+                .withPropertyValues(PROPERTIES)
+                .withPropertyValues("persistence.routing.health.interval=1h")
+                .run(context -> assertThat(context).getBean(ReplicaProbe.class).isInstanceOf(JdbcReplicaProbe.class));
+    }
+
+    @Test
+    void theHealthMonitorCanBeDisabled() {
+        runner.withPropertyValues(PROPERTIES)
+                .withPropertyValues("persistence.routing.health.enabled=false")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(ReplicaHealthMonitor.class);
+                });
+    }
+
+    @Test
+    void readFromPrimaryAndReadRetryApplyToTheServiceBeans() {
+        runner.withPropertyValues(PROPERTIES)
+                .withConfiguration(AutoConfigurations.of(AopAutoConfiguration.class))
+                .withBean(ReplicaResilienceTests.Reports.class)
+                .withBean(ReplicaResilienceTests.Catalog.class)
+                .run(context -> {
+                    assertThat(context.getBean(ReplicaResilienceTests.Reports.class).critical()).isTrue();
+                    assertThat(context.getBean(ReplicaResilienceTests.Reports.class).ordinary()).isFalse();
+
+                    ReplicaResilienceTests.Catalog catalog = context.getBean(ReplicaResilienceTests.Catalog.class);
+                    catalog.failNextWithConnectionError(1);
+                    assertThat(catalog.ordinaryRead()).isEqualTo("ok");
+                    assertThat(catalog.calls()).isEqualTo(2);
+                });
+    }
+
+    @Test
+    void theNumberOfReadAttemptsIsConfigurable() {
+        runner.withPropertyValues(PROPERTIES)
+                .withPropertyValues("persistence.routing.read-retry.max-attempts=1")
+                .withConfiguration(AutoConfigurations.of(AopAutoConfiguration.class))
+                .withBean(ReplicaResilienceTests.Catalog.class)
+                .run(context -> {
+                    ReplicaResilienceTests.Catalog catalog = context.getBean(ReplicaResilienceTests.Catalog.class);
+                    catalog.failNextWithConnectionError(1);
+                    assertThatThrownBy(catalog::ordinaryRead).isInstanceOf(DataAccessResourceFailureException.class);
+                    assertThat(catalog.calls()).isEqualTo(1);
                 });
     }
 

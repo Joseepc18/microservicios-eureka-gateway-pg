@@ -16,20 +16,33 @@ class RecordingDataSource extends AbstractDataSource {
 
     private final String name;
     private final List<String> log;
+    private volatile boolean down;
 
     RecordingDataSource(String name, List<String> log) {
         this.name = name;
         this.log = log;
     }
 
+    /** Simula un nodo detenido: las conexiones fallan con un error de conexión (SQLState 08001). */
+    void setDown(boolean down) {
+        this.down = down;
+    }
+
+    boolean isDown() {
+        return down;
+    }
+
     @Override
-    public Connection getConnection() {
+    public Connection getConnection() throws SQLException {
+        if (down) {
+            throw new SQLException("Connection to " + name + ":5432 refused", "08001");
+        }
         log.add(name);
         return fakeConnection();
     }
 
     @Override
-    public Connection getConnection(String username, String password) {
+    public Connection getConnection(String username, String password) throws SQLException {
         return getConnection();
     }
 

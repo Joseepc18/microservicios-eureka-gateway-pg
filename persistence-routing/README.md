@@ -1,6 +1,6 @@
 # persistence-routing
 
-Librería compartida que envía las **escrituras al primario** de PostgreSQL y reparte las **lecturas de solo lectura entre las réplicas** (round-robin). La usan `servicio-productos` y `servicio-pedidos`. Los servicios no contienen ninguna lógica de selección de nodo: solo agregan la dependencia, las propiedades y anotan sus transacciones como hacen normalmente.
+Librería compartida que envía las **escrituras al primario** de PostgreSQL y reparte las **lecturas de solo lectura entre las réplicas sanas** (round-robin). Si una réplica cae, sale de la rotación y vuelve cuando está apta; las **lecturas críticas** van al primario. La usan `servicio-productos` y `servicio-pedidos`. Los servicios no contienen ninguna lógica de selección de nodo: solo agregan la dependencia, las propiedades y anotan sus transacciones como hacen normalmente.
 
 ## Uso en un servicio
 
@@ -52,6 +52,12 @@ public class ProductoService {
     public List<Producto> listar() {
         return repository.findAll();
     }
+
+    @ReadFromPrimary                  // lectura crítica → primario
+    @Transactional(readOnly = true)
+    public Producto buscarRecienCreado(Long id) {
+        return repository.findById(id).orElseThrow();
+    }
 }
 ```
 
@@ -71,6 +77,12 @@ Funciona igual con JPA (Spring Data) y con `JdbcTemplate`.
 | `persistence.routing.replicas[n].name` | No | `replica1`, `replica2`... | Nombre del nodo en los logs |
 | `persistence.routing.pool.maximum-pool-size` | No | `5` | Conexiones máximas por nodo (HikariCP) |
 | `persistence.routing.pool.connection-timeout` | No | `3s` | Espera máxima para obtener una conexión de un nodo |
+| `persistence.routing.health.enabled` | No | `true` | Verificación periódica de las réplicas |
+| `persistence.routing.health.interval` | No | `5s` | Tiempo entre verificaciones |
+| `persistence.routing.health.max-lag` | No | `10s` | Retraso de replicación máximo para que una réplica esté apta |
+| `persistence.routing.health.failure-threshold` | No | `2` | Verificaciones no aptas seguidas para marcar una réplica como caída |
+| `persistence.routing.health.query-timeout` | No | `2s` | Tiempo máximo de la consulta de verificación |
+| `persistence.routing.read-retry.max-attempts` | No | `2` | Intentos de una lectura que falla por un error de conexión (`1` = sin reintento) |
 
 Si falta la URL de una réplica declarada, el servicio no arranca y el error dice qué falta. Si no se declara ninguna réplica, el módulo funciona igual y envía también las lecturas al primario, con un aviso en el log.
 
@@ -93,9 +105,11 @@ El servicio debe estar en la red `red_datos` y conviene que espere a la base con
 
 | Situación | Clave | Nodo |
 |---|---|---|
-| Transacción `@Transactional(readOnly = true)` | `REPLICA` | Una réplica, elegida por round-robin |
+| Transacción `@Transactional(readOnly = true)` | `REPLICA` | Una réplica **disponible**, elegida por round-robin |
+| Lectura crítica (`@ReadFromPrimary` o `PrimaryRead`) | `PRIMARY` | Primario, aunque sea de solo lectura |
 | Transacción de escritura (`@Transactional` sin `readOnly`) | `PRIMARY` | Primario |
 | SQL fuera de una transacción | `PRIMARY` | Primario |
+| Réplicas configuradas pero ninguna disponible | `REPLICA` | Primario (lectura degradada, con aviso en el log) |
 | Sin réplicas configuradas | `PRIMARY` | Primario (también las lecturas) |
 
 **Por qué el primario es el destino por defecto:** ante la duda, el primario siempre tiene el dato más reciente y acepta escrituras. Solo se envía a una réplica lo que se declaró explícitamente de solo lectura.
@@ -126,7 +140,37 @@ Cada nodo tiene su propio pool. Los pools se inician con la primera conexión, a
 
 El routing no se registra como bean ni se expone con `unwrap`: el único `DataSource` de la aplicación es el proxy. Si Spring Boot encontrara el routing, el health check de Actuator (`/actuator/health`, el que usa Docker Compose) comprobaría cada destino por separado, también `REPLICA` sin transacción, y cada comprobación consumiría turnos del round-robin y dejaría líneas `DB route=REPLICA ... tx=none` en el log. Así, el health check solo comprueba el primario.
 
-## Logs (evidencia de P05)
+## Resiliencia de réplicas
+
+Una réplica está **apta** si responde, sigue en modo recuperación (`pg_is_in_recovery() = true`, es decir, no fue promovida) y su retraso de replicación no supera `max-lag`. El retraso es 0 si la réplica ya aplicó todo el WAL recibido; si no, es el tiempo desde la última transacción aplicada (`now() - pg_last_xact_replay_timestamp()`). Así, un primario sin escrituras no hace parecer retrasada a una réplica al día.
+
+| Paso | Qué hace | Clase |
+|---|---|---|
+| **Detección** | Cada `interval` se verifica cada réplica con una conexión directa a su pool, sin pasar por el enrutamiento: no consume turnos del round-robin ni deja líneas `DB route`. Tras `failure-threshold` verificaciones no aptas seguidas, la réplica se marca como caída. | `ReplicaHealthMonitor`, `JdbcReplicaProbe` |
+| **Exclusión inmediata** | Si una lectura no puede obtener conexión de la réplica que le tocó, esa réplica sale de la rotación en el acto y la lectura se hace en la siguiente disponible. Es el caso de `docker compose stop replica1`: la lectura no falla, aunque espera hasta `connection-timeout` (ver Limitaciones). | `ReplicaPoolDataSource` |
+| **Reintento** | Si la réplica cae **a mitad** de una lectura, el método `@Transactional(readOnly = true)` se repite (`read-retry.max-attempts`) en una transacción nueva, que va a otra réplica. Solo se reintentan los errores de conexión (SQLState `08xxx`, y `57P01`-`57P03`, con los que PostgreSQL corta las sesiones al detenerse: es lo que llega con `docker stop`), no los de la consulta, y solo la transacción más externa. Repetir una lectura no tiene efectos secundarios. | `ReadOnlyRetryInterceptor` |
+| **Sin réplicas sanas** | Las lecturas se **degradan al primario**, con un aviso en el log. | `ReplicaPoolDataSource` |
+| **Reincorporación** | La primera verificación apta devuelve la réplica a la rotación. Como exige el retraso bajo `max-lag`, una réplica que vuelve tras una parada solo recibe lecturas cuando se puso al día. | `ReplicaHealthMonitor` |
+
+**Por qué degradar al primario y no devolver un error:** el primario siempre tiene el dato más reciente y acepta lecturas, así que el servicio sigue respondiendo correctamente. La carga extra sobre el primario dura solo mientras no hay réplicas, y a la escala del proyecto no lo satura. Un error controlado dejaría sin servicio las consultas aunque la base siga disponible.
+
+### Lecturas críticas y consistencia
+
+La replicación es asíncrona: una lectura en réplica justo después de una escritura puede no ver todavía el dato. **Política:** las lecturas ordinarias aceptan ese pequeño retraso (consistencia eventual, acotada por `max-lag`); una lectura que **debe** ver una escritura anterior se declara crítica y va al primario, que siempre la tiene.
+
+```java
+// Con la anotación (en el método transaccional o en la clase)
+@ReadFromPrimary
+@Transactional(readOnly = true)
+public Pedido buscarRecienCreado(Long id) { ... }
+
+// O con el ejecutor, desde fuera de la transacción
+Pedido pedido = PrimaryRead.call(() -> pedidoService.buscar(id));
+```
+
+La marca debe ponerse **antes** de que la transacción obtenga su conexión: en el método `@Transactional` o alrededor de él, no dentro de una transacción de solo lectura que ya consultó una réplica. Si se hace, la transacción sigue en su réplica y se registra un aviso. `@ReadFromPrimary` funciona, como `@Transactional`, cuando el método se llama a través del bean de Spring.
+
+## Logs (evidencia de P05 a P08)
 
 Cada vez que se obtiene una conexión física se registra una línea con el nodo elegido y el tipo de operación:
 
@@ -137,13 +181,26 @@ DB route=REPLICA node=replica2 tx=read-only
 DB route=PRIMARY node=primary tx=none
 ```
 
-`tx` vale `read-write` (transacción de escritura), `read-only` (transacción de solo lectura) o `none` (sin transacción). El health check de Actuator también deja líneas `DB route=PRIMARY node=primary tx=none` en cada comprobación. El logger es `ec.edu.upse.distribuidas.persistencerouting.DataSourceNode`, en nivel `INFO`. Al arrancar se registra también la configuración:
+`tx` vale `read-write` (transacción de escritura), `read-only` (transacción de solo lectura) o `none` (sin transacción). Las lecturas críticas añaden `read=critical`: `DB route=PRIMARY node=primary tx=read-only read=critical`. El health check de Actuator también deja líneas `DB route=PRIMARY node=primary tx=none` en cada comprobación. El logger es `ec.edu.upse.distribuidas.persistencerouting.DataSourceNode`, en nivel `INFO`. Al arrancar se registra también la configuración:
 
 ```
 Enrutamiento de persistencia: primario=primary réplicas=[replica1, replica2] política=round-robin
 ```
 
-Para filtrar las decisiones de un servicio: `docker compose logs servicio-productos-1 | grep "DB route"`.
+Los cambios de estado de las réplicas usan el prefijo `DB health` y se registran una vez por transición, no en cada verificación:
+
+```
+DB health verificando 2 réplicas cada 5 s (retraso máximo 10 s, caída tras 2 fallos)
+DB health node=replica1 estado=DOWN motivo="fallo al obtener conexión: ..." -> excluida de la rotación; rotación=[replica2]
+DB health node=replica1 verificación fallida 1/2: sin conexión: ...
+DB health sin réplicas disponibles: las lecturas se degradan al primario
+DB route=REPLICA sin réplicas disponibles: la lectura se degrada al primario
+DB health node=replica1 estado=UP recovery=true lag=0.0s -> reincorporada a la rotación; rotación=[replica1, replica2]
+DB health las lecturas vuelven a las réplicas
+DB retry ProductoService.listar: fallo de conexión en una lectura (...); intento 2/2 en otra réplica
+```
+
+Para filtrar un servicio: `docker compose logs servicio-productos-1 | grep -E "DB (route|health|retry)"`.
 
 ## Cambiar la política
 
@@ -156,10 +213,13 @@ ReplicaSelectionPolicy replicaSelectionPolicy() {
 }
 ```
 
-## Limitaciones actuales
+## Limitaciones
 
-- **Réplica caída:** este módulo todavía no comprueba la salud de las réplicas, así que una lectura asignada a una réplica detenida falla. Con `docker compose stop replica1` falla de inmediato, porque su nombre deja de resolverse (`UnknownHostException: replica1`). Si el nodo existe pero no responde, la espera está acotada por `connection-timeout`. La detección, exclusión y reincorporación de réplicas llega en la issue #9.
-- **Retraso de replicación:** la replicación es asíncrona, así que una lectura en réplica justo después de una escritura puede no ver el dato todavía. Las lecturas críticas dirigidas al primario llegan en la issue #9. Mientras tanto, si una lectura necesita el dato recién escrito, debe hacerse dentro de una transacción de escritura, que va al primario.
+- **Primario caído:** no hay promoción automática ni failover (el proyecto no lo exige). Las escrituras y las lecturas críticas fallan mientras el primario no responda.
+- **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde la conexión con el primario, deja de recibir WAL sin que su retraso medido crezca, porque ya aplicó todo lo que recibió. Sus lecturas quedarían desactualizadas hasta que se reconecte. En este proyecto solo ocurre si cae el primario.
+- **Primera lectura tras una caída:** la lectura a la que le toca la réplica caída espera hasta `connection-timeout` (3 s por defecto) mientras el pool intenta reconectar; después la réplica se excluye y esa lectura se atiende en otra réplica, sin error. Las lecturas siguientes ya no esperan. Se observó así con `docker stop` sobre el clúster real: la lectura tardó unos 3 s. Bajar `connection-timeout` acorta esa espera, a cambio de excluir antes una réplica sana cuando el pool está saturado.
+- **Pool agotado:** un tiempo de espera agotado al pedir una conexión también excluye la réplica; vuelve en la siguiente verificación apta.
+- **Reintento:** solo cubre la transacción de solo lectura más externa. Una lectura que participa en una transacción ya abierta propaga el error a quien abrió la transacción.
 
 ## Pruebas
 
@@ -173,6 +233,7 @@ Las pruebas no necesitan Docker ni PostgreSQL: usan transacciones reales de Spri
 |---|---|
 | `RoundRobinReplicaSelectionPolicyTests` | Alternancia y orden, 3 réplicas, una sola réplica, desbordamiento del contador, reparto 500/500 con 8 hilos |
 | `ReadWriteRoutingDataSourceTests` | Escrituras siempre al primario, 10 lecturas alternadas, sin transacción al primario, decisión perezosa, por qué hace falta el proxy, health check solo al primario, routing oculto a `unwrap`, sin réplicas, formato del log |
-| `PersistenceRoutingAutoConfigurationTests` | Reemplaza el `DataSource` de Spring Boot (un único bean), propiedades y variables de entorno, herencia de credenciales, política propia, health check de Actuator sin réplicas, inactivo sin URL, error si falta una URL, cierre de los pools |
+| `ReplicaResilienceTests` | Réplica detenida excluida al instante y lecturas por la otra, degradación al primario, umbral de fallos, réplica promovida o retrasada fuera de la rotación, reincorporación solo cuando se puso al día, transiciones registradas una vez, lecturas críticas (`PrimaryRead`, `@ReadFromPrimary`, escritura seguida de lectura crítica), reintento en otra réplica y sus límites |
+| `PersistenceRoutingAutoConfigurationTests` | Reemplaza el `DataSource` de Spring Boot (un único bean), propiedades y variables de entorno, herencia de credenciales, política propia, health check de Actuator sin réplicas, monitor de réplicas (arranque, sonda JDBC por defecto, desactivable), `@ReadFromPrimary` y reintento aplicados a los beans, inactivo sin URL, error si falta una URL, cierre de los pools |
 
 > **Fuera de Docker:** si en el equipo hay un PostgreSQL instalado escuchando en el puerto `5432`, las conexiones a `127.0.0.1:5432` pueden llegar a ese servidor en lugar de al contenedor `primary`. Dentro de Docker Compose (`primary:5432`) no ocurre.
