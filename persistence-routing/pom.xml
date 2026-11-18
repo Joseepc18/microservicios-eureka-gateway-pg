@@ -36,5 +36,11 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Solo para comprobar que el health check de Actuator no toca las réplicas. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-actuator-autoconfigure</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

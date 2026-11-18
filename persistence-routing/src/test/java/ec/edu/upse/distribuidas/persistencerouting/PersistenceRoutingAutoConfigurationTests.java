@@ -9,9 +9,13 @@ import java.util.Map;
 import javax.sql.DataSource;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.actuate.autoconfigure.health.HealthContributorAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.jdbc.DataSourceHealthContributorAutoConfiguration;
+import org.springframework.boot.actuate.jdbc.DataSourceHealthIndicator;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
 
@@ -34,6 +38,10 @@ class PersistenceRoutingAutoConfigurationTests {
             "persistence.routing.replicas[0].url=jdbc:postgresql://replica1:5432/productos_db",
             "persistence.routing.replicas[1].url=jdbc:postgresql://replica2:5432/productos_db"};
 
+    private static ReadWriteRoutingDataSource routing(ApplicationContext context) {
+        return context.getBean(LazyRoutingDataSource.class).getRoutingDataSource();
+    }
+
     private static HikariDataSource hikari(DataSourceNode node) {
         return (HikariDataSource) node.getTargetDataSource();
     }
@@ -44,15 +52,16 @@ class PersistenceRoutingAutoConfigurationTests {
             assertThat(context).hasNotFailed();
             DataSource dataSource = context.getBean(DataSource.class);
             assertThat(dataSource).isInstanceOf(LazyConnectionDataSourceProxy.class);
-            assertThat(((LazyConnectionDataSourceProxy) dataSource).getTargetDataSource())
-                    .isSameAs(context.getBean(ReadWriteRoutingDataSource.class));
+            assertThat(((LazyConnectionDataSourceProxy) dataSource).getTargetDataSource()).isSameAs(routing(context));
+            // El routing vive dentro del proxy: no es otro bean DataSource.
+            assertThat(context.getBeansOfType(DataSource.class)).containsOnlyKeys("dataSource");
         });
     }
 
     @Test
     void buildsThePrimaryAndTheReplicasFromTheProperties() {
         runner.withPropertyValues(PROPERTIES).run(context -> {
-            ReadWriteRoutingDataSource routing = context.getBean(ReadWriteRoutingDataSource.class);
+            ReadWriteRoutingDataSource routing = routing(context);
 
             assertThat(routing.getPrimary().getName()).isEqualTo("primary");
             assertThat(hikari(routing.getPrimary()).getJdbcUrl()).isEqualTo("jdbc:postgresql://primary:5432/productos_db");
@@ -66,7 +75,7 @@ class PersistenceRoutingAutoConfigurationTests {
     @Test
     void replicasInheritTheCredentialsOfThePrimary() {
         runner.withPropertyValues(PROPERTIES).run(context -> {
-            for (DataSourceNode replica : context.getBean(ReadWriteRoutingDataSource.class).getReplicas()) {
+            for (DataSourceNode replica : routing(context).getReplicas()) {
                 assertThat(hikari(replica).getUsername()).isEqualTo("productos_app");
                 assertThat(hikari(replica).getPassword()).isEqualTo("clave");
             }
@@ -82,7 +91,7 @@ class PersistenceRoutingAutoConfigurationTests {
                         "persistence.routing.pool.maximum-pool-size=7",
                         "persistence.routing.pool.connection-timeout=1500ms")
                 .run(context -> {
-                    ReadWriteRoutingDataSource routing = context.getBean(ReadWriteRoutingDataSource.class);
+                    ReadWriteRoutingDataSource routing = routing(context);
                     DataSourceNode second = routing.getReplicas().get(1);
 
                     assertThat(second.getName()).isEqualTo("lectura-b");
@@ -112,10 +121,24 @@ class PersistenceRoutingAutoConfigurationTests {
                 .withInitializer(context -> context.getEnvironment().getPropertySources()
                         .addFirst(new SystemEnvironmentPropertySource("test-systemEnvironment", env)))
                 .run(context -> {
-                    ReadWriteRoutingDataSource routing = context.getBean(ReadWriteRoutingDataSource.class);
+                    ReadWriteRoutingDataSource routing = routing(context);
                     assertThat(hikari(routing.getPrimary()).getUsername()).isEqualTo("pedidos_app");
                     assertThat(routing.getReplicas()).extracting(node -> hikari(node).getJdbcUrl())
                             .containsExactly("jdbc:postgresql://replica1:5432/pedidos_db");
+                });
+    }
+
+    @Test
+    void theActuatorHealthCheckOnlyChecksTheLazyProxy() {
+        // Si el routing fuera otro DataSource candidato, Spring Boot crearía un indicador
+        // compuesto (primary + replica) que pediría conexiones a las réplicas sin transacción y
+        // consumiría turnos del round-robin en cada health check.
+        runner.withPropertyValues(PROPERTIES)
+                .withConfiguration(AutoConfigurations.of(HealthContributorAutoConfiguration.class,
+                        DataSourceHealthContributorAutoConfiguration.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean("dbHealthContributor")).isInstanceOf(DataSourceHealthIndicator.class);
                 });
     }
 
@@ -124,7 +147,7 @@ class PersistenceRoutingAutoConfigurationTests {
         ReplicaSelectionPolicy alwaysFirst = replicas -> replicas.get(0);
         runner.withPropertyValues(PROPERTIES)
                 .withBean(ReplicaSelectionPolicy.class, () -> alwaysFirst)
-                .run(context -> assertThat(context.getBean(ReadWriteRoutingDataSource.class).getPolicy())
+                .run(context -> assertThat(routing(context).getPolicy())
                         .isSameAs(alwaysFirst));
     }
 
@@ -133,7 +156,7 @@ class PersistenceRoutingAutoConfigurationTests {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(PersistenceRoutingAutoConfiguration.class))
                 .run(context -> {
-                    assertThat(context).doesNotHaveBean(ReadWriteRoutingDataSource.class);
+                    assertThat(context).doesNotHaveBean(LazyRoutingDataSource.class);
                     assertThat(context).doesNotHaveBean(DataSource.class);
                 });
     }
@@ -149,7 +172,7 @@ class PersistenceRoutingAutoConfigurationTests {
     @Test
     void closesTheConnectionPoolsWhenTheContextCloses() {
         runner.withPropertyValues(PROPERTIES).run(context -> {
-            ReadWriteRoutingDataSource routing = context.getBean(ReadWriteRoutingDataSource.class);
+            ReadWriteRoutingDataSource routing = routing(context);
             context.close();
             assertThat(hikari(routing.getPrimary()).isClosed()).isTrue();
             assertThat(routing.getReplicas()).allSatisfy(node -> assertThat(hikari(node).isClosed()).isTrue());

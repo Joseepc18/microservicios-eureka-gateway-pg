@@ -1,10 +1,7 @@
 package ec.edu.upse.distribuidas.persistencerouting;
 
-import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
-
-import javax.sql.DataSource;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -13,7 +10,6 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
-import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
 import org.springframework.util.StringUtils;
 
 import com.zaxxer.hikari.HikariDataSource;
@@ -25,7 +21,7 @@ import com.zaxxer.hikari.HikariDataSource;
  * {@code DataSource} que Spring Boot crearía por defecto ({@code spring.datasource.*}) por:
  *
  * <pre>
- * LazyConnectionDataSourceProxy          (bean DataSource principal: lo usan JPA y JdbcTemplate)
+ * LazyRoutingDataSource                  (único bean DataSource: proxy perezoso; lo usan JPA y JdbcTemplate)
  *   └─ ReadWriteRoutingDataSource        (PRIMARY / REPLICA según la transacción)
  *        ├─ PRIMARY → DataSourceNode primary  → pool HikariCP
  *        └─ REPLICA → ReplicaPoolDataSource   → política (round-robin)
@@ -44,9 +40,14 @@ public class PersistenceRoutingAutoConfiguration {
         return new RoundRobinReplicaSelectionPolicy();
     }
 
+    /**
+     * DataSource que ven los servicios: el proxy perezoso con el routing dentro (ver
+     * {@link LazyRoutingDataSource}). El routing no se registra como bean aparte para que Spring
+     * Boot no lo trate como otro {@code DataSource} (por ejemplo, en el health check de Actuator).
+     */
     @Bean
-    public ReadWriteRoutingDataSource readWriteRoutingDataSource(PersistenceRoutingProperties properties,
-            ReplicaSelectionPolicy policy) {
+    @Primary
+    public LazyRoutingDataSource dataSource(PersistenceRoutingProperties properties, ReplicaSelectionPolicy policy) {
         PersistenceRoutingProperties.Node primaryProps = properties.getPrimary();
         DataSourceNode primary = node(primaryProps, "primary", DataSourceRole.PRIMARY, primaryProps,
                 properties.getPool());
@@ -59,23 +60,7 @@ public class PersistenceRoutingAutoConfiguration {
         }
 
         ReplicaPoolDataSource pool = replicas.isEmpty() ? null : new ReplicaPoolDataSource(replicas, policy);
-        return new ReadWriteRoutingDataSource(primary, pool);
-    }
-
-    /**
-     * DataSource que ven los servicios. El proxy perezoso retrasa la obtención de la conexión
-     * física hasta la primera sentencia SQL, cuando ya se sabe si la transacción es de solo
-     * lectura. Los valores por defecto se fijan aquí para que el proxy no abra una conexión al
-     * arrancar solo para averiguarlos (son los de PostgreSQL).
-     */
-    @Bean
-    @Primary
-    public DataSource dataSource(ReadWriteRoutingDataSource routingDataSource) {
-        LazyConnectionDataSourceProxy proxy = new LazyConnectionDataSourceProxy();
-        proxy.setTargetDataSource(routingDataSource);
-        proxy.setDefaultAutoCommit(true);
-        proxy.setDefaultTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
-        return proxy;
+        return new LazyRoutingDataSource(new ReadWriteRoutingDataSource(primary, pool));
     }
 
     private static DataSourceNode node(PersistenceRoutingProperties.Node props, String defaultName,

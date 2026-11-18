@@ -12,11 +12,13 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.actuate.jdbc.DataSourceHealthIndicator;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
+import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -37,13 +39,8 @@ class ReadWriteRoutingDataSourceTests {
         return new DataSourceNode(name, role, new RecordingDataSource(name, used));
     }
 
-    private static DataSource lazy(DataSource target) {
-        LazyConnectionDataSourceProxy proxy = new LazyConnectionDataSourceProxy();
-        proxy.setTargetDataSource(target);
-        proxy.setDefaultAutoCommit(true);
-        proxy.setDefaultTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
-        proxy.afterPropertiesSet();
-        return proxy;
+    private static DataSource lazy(ReadWriteRoutingDataSource routing) {
+        return new LazyRoutingDataSource(routing);
     }
 
     @BeforeEach
@@ -135,6 +132,27 @@ class ReadWriteRoutingDataSourceTests {
         readOnlyTx.executeWithoutResult(status -> executeStatement());
 
         assertThat(used).containsExactly("primary");
+    }
+
+    @Test
+    void theActuatorHealthCheckGoesToThePrimaryAndLeavesTheRoundRobinAlone() {
+        // Spring Boot busca DataSources con routing mediante isWrapperFor; si lo encontrara,
+        // comprobaría también el destino REPLICA y consumiría turnos de la política.
+        assertThat(dataSource).isInstanceOf(LazyConnectionDataSourceProxy.class);
+        new DataSourceHealthIndicator(dataSource).health();
+
+        assertThat(used).isNotEmpty().containsOnly("primary");
+
+        used.clear();
+        readOnlyTx.executeWithoutResult(status -> executeStatement());
+        assertThat(used).containsExactly("replica1");
+    }
+
+    @Test
+    void theRoutingIsNotExposedThroughUnwrap() throws Exception {
+        assertThat(dataSource.isWrapperFor(AbstractRoutingDataSource.class)).isFalse();
+        assertThat(dataSource.isWrapperFor(ReadWriteRoutingDataSource.class)).isFalse();
+        assertThat(dataSource.isWrapperFor(DataSource.class)).isTrue();
     }
 
     @Test

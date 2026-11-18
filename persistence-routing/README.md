@@ -114,7 +114,7 @@ Además, el gestor de transacciones marca la conexión como `readOnly`, así que
 ### Estructura
 
 ```
-DataSource (bean principal) = LazyConnectionDataSourceProxy
+DataSource (único bean) = LazyRoutingDataSource   proxy perezoso (LazyConnectionDataSourceProxy)
   └─ ReadWriteRoutingDataSource           PRIMARY / REPLICA según la transacción
        ├─ PRIMARY → DataSourceNode "primary"   → pool HikariCP
        └─ REPLICA → ReplicaPoolDataSource      → ReplicaSelectionPolicy (round-robin)
@@ -123,6 +123,8 @@ DataSource (bean principal) = LazyConnectionDataSourceProxy
 ```
 
 Cada nodo tiene su propio pool. Los pools se inician con la primera conexión, así que un nodo caído no impide que el servicio arranque.
+
+El routing no se registra como bean ni se expone con `unwrap`: el único `DataSource` de la aplicación es el proxy. Si Spring Boot encontrara el routing, el health check de Actuator (`/actuator/health`, el que usa Docker Compose) comprobaría cada destino por separado, también `REPLICA` sin transacción, y cada comprobación consumiría turnos del round-robin y dejaría líneas `DB route=REPLICA ... tx=none` en el log. Así, el health check solo comprueba el primario.
 
 ## Logs (evidencia de P05)
 
@@ -135,7 +137,7 @@ DB route=REPLICA node=replica2 tx=read-only
 DB route=PRIMARY node=primary tx=none
 ```
 
-`tx` vale `read-write` (transacción de escritura), `read-only` (transacción de solo lectura) o `none` (sin transacción). El logger es `ec.edu.upse.distribuidas.persistencerouting.DataSourceNode`, en nivel `INFO`. Al arrancar se registra también la configuración:
+`tx` vale `read-write` (transacción de escritura), `read-only` (transacción de solo lectura) o `none` (sin transacción). El health check de Actuator también deja líneas `DB route=PRIMARY node=primary tx=none` en cada comprobación. El logger es `ec.edu.upse.distribuidas.persistencerouting.DataSourceNode`, en nivel `INFO`. Al arrancar se registra también la configuración:
 
 ```
 Enrutamiento de persistencia: primario=primary réplicas=[replica1, replica2] política=round-robin
@@ -170,7 +172,7 @@ Las pruebas no necesitan Docker ni PostgreSQL: usan transacciones reales de Spri
 | Clase | Qué comprueba |
 |---|---|
 | `RoundRobinReplicaSelectionPolicyTests` | Alternancia y orden, 3 réplicas, una sola réplica, desbordamiento del contador, reparto 500/500 con 8 hilos |
-| `ReadWriteRoutingDataSourceTests` | Escrituras siempre al primario, 10 lecturas alternadas, sin transacción al primario, decisión perezosa, por qué hace falta el proxy, sin réplicas, formato del log |
-| `PersistenceRoutingAutoConfigurationTests` | Reemplaza el `DataSource` de Spring Boot, propiedades y variables de entorno, herencia de credenciales, política propia, inactivo sin URL, error si falta una URL, cierre de los pools |
+| `ReadWriteRoutingDataSourceTests` | Escrituras siempre al primario, 10 lecturas alternadas, sin transacción al primario, decisión perezosa, por qué hace falta el proxy, health check solo al primario, routing oculto a `unwrap`, sin réplicas, formato del log |
+| `PersistenceRoutingAutoConfigurationTests` | Reemplaza el `DataSource` de Spring Boot (un único bean), propiedades y variables de entorno, herencia de credenciales, política propia, health check de Actuator sin réplicas, inactivo sin URL, error si falta una URL, cierre de los pools |
 
 > **Fuera de Docker:** si en el equipo hay un PostgreSQL instalado escuchando en el puerto `5432`, las conexiones a `127.0.0.1:5432` pueden llegar a ese servidor en lugar de al contenedor `primary`. Dentro de Docker Compose (`primary:5432`) no ocurre.
