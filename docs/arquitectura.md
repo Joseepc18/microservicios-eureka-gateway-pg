@@ -35,6 +35,29 @@ Proyecto Maven multi-módulo (`pom.xml` en la raíz). Los nombres lógicos de Eu
 
 Versiones: Java 21, Spring Boot 3.5.16 y Spring Cloud 2025.0.3 (`2025.0.x` es el release train compatible con Spring Boot 3.5.x; la serie `2025.1.x` corresponde a Spring Boot 4). Paquete base: `ec.edu.upse.distribuidas`.
 
+## Eureka: configuración y tiempos de detección
+
+`discovery-server` corre en el puerto `8761` como servidor único (`register-with-eureka=false`, `fetch-registry=false`). Dashboard: `http://localhost:8761`. Registro en JSON: `http://localhost:8761/eureka/apps` (con el header `Accept: application/json`). Salud: `/actuator/health`.
+
+Tiempos ajustados para que una caída sea visible durante la demo (los valores por defecto de Eureka son mucho mayores):
+
+| Parámetro | Defecto | Valor |
+|---|---|---|
+| Latido del cliente (`lease-renewal-interval-in-seconds`) | 30 s | 5 s |
+| Expiración de la instancia (`lease-expiration-duration-in-seconds`) | 90 s | 10 s |
+| Evicción en el servidor (`eviction-interval-timer-in-ms`) | 60 s | 5 s |
+| Caché de respuesta del servidor (`response-cache-update-interval-ms`) | 30 s | 3 s |
+| Consulta del registro por el cliente (`registry-fetch-interval-seconds`) | 30 s | 5 s |
+| Caché de instancias del LoadBalancer (`spring.cloud.loadbalancer.cache.ttl`) | 35 s | 5 s (gateway y pedidos) |
+
+La autopreservación (`enable-self-preservation`) está desactivada. Cuando está activa, Eureka suspende la expulsión de instancias si las renovaciones caen por debajo de un umbral (por ejemplo, si cae a la vez un grupo grande de instancias). Se desactiva solo en este laboratorio para que el registro no conserve instancias muertas durante las demos; en producción se mantendría activada. Con una sola instancia caída la expulsión ocurre igualmente a los ~24 s, tanto con la autopreservación activa como desactivada (comprobado en la revisión).
+
+**Medición:** al terminar de forma abrupta una instancia de `servicio-productos` (sin darse de baja), Eureka la expulsó del registro a los ~24 s. Una parada ordenada (`docker compose stop`) sí se da de baja de inmediato.
+
+**Por qué ~24 s y no 10 s:** la expiración configurada es de 10 s, pero Eureka la aplica con un margen adicional (en la práctica cerca del doble, ~20 s) y después espera al siguiente ciclo de evicción (hasta 5 s) y a la caché de respuesta (3 s). Ese margen es un comportamiento conocido de Eureka que no se verificó leyendo su código; el valor de ~24 s es el medido.
+
+**Ventana total hasta que el Gateway deja de enviar a la instancia caída** (peor caso): ~24 s del servidor + hasta 5 s de consulta del registro por el cliente + hasta 5 s de la caché del LoadBalancer, es decir, **~35 s**. Durante esa ventana el Gateway puede seguir enviando solicitudes a la instancia caída; por eso se esperan errores transitorios, que se analizan en P03.
+
 ## Puertos
 
 | Servicio | Puerto en el host |

@@ -1,6 +1,11 @@
 spring:
   application:
     name: servicio-pedidos
+  cloud:
+    loadbalancer:
+      cache:
+        # Caché de instancias del LoadBalancer (por defecto 35 s).
+        ttl: 5s
 
 server:
   port: ${SERVER_PORT:8083}
@@ -9,3 +14,10 @@ eureka:
   client:
     service-url:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    # Consulta el registro cada 5 s (por defecto 30 s).
+    registry-fetch-interval-seconds: 5
+  instance:
+    instance-id: ${spring.application.name}:${INSTANCE_ID:${random.value}}
+    # Latido cada 5 s y expiración a los 10 s (por defecto 30 s y 90 s).
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 10
