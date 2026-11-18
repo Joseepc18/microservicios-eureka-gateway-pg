@@ -18,9 +18,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *   <li>Transacción de solo lectura ({@code @Transactional(readOnly = true)}) → clave
  *       {@link DataSourceRole#REPLICA}, que reparte entre las réplicas con la política
  *       configurada.</li>
+ *   <li>Lectura crítica ({@link PrimaryRead}, {@link ReadFromPrimary}) → clave
+ *       {@link DataSourceRole#PRIMARY}, aunque la transacción sea de solo lectura.</li>
  *   <li>Cualquier otro caso (transacción de escritura o sin transacción) → clave
  *       {@link DataSourceRole#PRIMARY}.</li>
- *   <li>Si no hay réplicas configuradas, todo va al primario.</li>
+ *   <li>Si no hay réplicas configuradas, todo va al primario. Si las hay pero ninguna está
+ *       disponible, {@link ReplicaPoolDataSource} degrada la lectura al primario.</li>
  * </ul>
  *
  * <p>Debe usarse detrás de un {@code LazyConnectionDataSourceProxy}: el gestor de transacciones
@@ -69,11 +72,17 @@ public class ReadWriteRoutingDataSource extends AbstractRoutingDataSource implem
     protected Object determineCurrentLookupKey() {
         boolean readOnly = TransactionSynchronizationManager.isActualTransactionActive()
                 && TransactionSynchronizationManager.isCurrentTransactionReadOnly();
-        return readOnly && replicaPool != null ? DataSourceRole.REPLICA : DataSourceRole.PRIMARY;
+        return readOnly && replicaPool != null && !PrimaryRead.isActive() ? DataSourceRole.REPLICA
+                : DataSourceRole.PRIMARY;
     }
 
     public DataSourceNode getPrimary() {
         return primary;
+    }
+
+    /** Réplicas con su política y su estado, o {@code null} si no hay réplicas. */
+    public ReplicaPoolDataSource getReplicaPool() {
+        return replicaPool;
     }
 
     public List<DataSourceNode> getReplicas() {

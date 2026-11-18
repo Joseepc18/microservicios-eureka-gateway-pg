@@ -30,6 +30,12 @@ public class PersistenceRoutingProperties {
     /** Ajustes comunes del pool de conexiones de cada nodo. */
     private Pool pool = new Pool();
 
+    /** Verificación periódica de las réplicas. */
+    private Health health = new Health();
+
+    /** Reintento de lecturas que fallan a mitad de camino. */
+    private ReadRetry readRetry = new ReadRetry();
+
     public Node getPrimary() {
         return primary;
     }
@@ -52,6 +58,22 @@ public class PersistenceRoutingProperties {
 
     public void setPool(Pool pool) {
         this.pool = pool;
+    }
+
+    public Health getHealth() {
+        return health;
+    }
+
+    public void setHealth(Health health) {
+        this.health = health;
+    }
+
+    public ReadRetry getReadRetry() {
+        return readRetry;
+    }
+
+    public void setReadRetry(ReadRetry readRetry) {
+        this.readRetry = readRetry;
     }
 
     /** Un nodo PostgreSQL. */
@@ -125,6 +147,80 @@ public class PersistenceRoutingProperties {
 
         public void setConnectionTimeout(Duration connectionTimeout) {
             this.connectionTimeout = connectionTimeout;
+        }
+    }
+
+    /** Verificación periódica de las réplicas (detección, exclusión y reincorporación). */
+    public static class Health {
+
+        /** Si se verifican las réplicas. Sin verificación, una réplica caída nunca sale de la rotación. */
+        private boolean enabled = true;
+
+        /** Tiempo entre una verificación y la siguiente. */
+        private Duration interval = Duration.ofSeconds(5);
+
+        /** Retraso de replicación máximo para que una réplica se considere apta. */
+        private Duration maxLag = Duration.ofSeconds(10);
+
+        /** Verificaciones no aptas seguidas para marcar una réplica como caída. */
+        private int failureThreshold = 2;
+
+        /** Tiempo máximo de la consulta de verificación. */
+        private Duration queryTimeout = Duration.ofSeconds(2);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getInterval() {
+            return interval;
+        }
+
+        public void setInterval(Duration interval) {
+            this.interval = interval;
+        }
+
+        public Duration getMaxLag() {
+            return maxLag;
+        }
+
+        public void setMaxLag(Duration maxLag) {
+            this.maxLag = maxLag;
+        }
+
+        public int getFailureThreshold() {
+            return failureThreshold;
+        }
+
+        public void setFailureThreshold(int failureThreshold) {
+            this.failureThreshold = failureThreshold;
+        }
+
+        public Duration getQueryTimeout() {
+            return queryTimeout;
+        }
+
+        public void setQueryTimeout(Duration queryTimeout) {
+            this.queryTimeout = queryTimeout;
+        }
+    }
+
+    /** Reintento de transacciones de solo lectura que fallan por un error de conexión. */
+    public static class ReadRetry {
+
+        /** Intentos totales de una lectura (1 = sin reintento). */
+        private int maxAttempts = 2;
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = maxAttempts;
         }
     }
 }
