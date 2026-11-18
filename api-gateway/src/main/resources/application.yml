@@ -1,6 +1,42 @@
 spring:
   application:
     name: api-gateway
+  cloud:
+    loadbalancer:
+      cache:
+        ttl: 5s
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 10s
+          # Reintentos solo para GET (idempotente) ante instancia caída o error 5xx.
+          # Un POST no se reintenta para no duplicar escrituras.
+          default-filters:
+            - name: Retry
+              args:
+                retries: 2
+                methods: GET
+                series: SERVER_ERROR
+                exceptions: java.io.IOException, java.util.concurrent.TimeoutException
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+                  factor: 2
+          routes:
+            - id: servicio-productos
+              uri: lb://servicio-productos
+              predicates:
+                - Path=/api/productos/**
+              filters:
+                - StripPrefix=1
+            - id: servicio-pedidos
+              uri: lb://servicio-pedidos
+              predicates:
+                - Path=/api/pedidos/**
+              filters:
+                - StripPrefix=1
 
 server:
   port: 8080
@@ -15,4 +51,12 @@ eureka:
     lease-renewal-interval-in-seconds: 5
     lease-expiration-duration-in-seconds: 10
 
-spring.cloud.loadbalancer.cache.ttl: 5s
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      probes:
+        enabled: true

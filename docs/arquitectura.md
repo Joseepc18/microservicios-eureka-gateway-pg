@@ -54,6 +54,22 @@ La autopreservación (`enable-self-preservation`) está desactivada: con pocas i
 
 **Medición:** al terminar de forma abrupta una instancia de `servicio-productos` (sin darse de baja), Eureka la expulsó del registro a los ~24 s. Durante esa ventana, el Gateway puede seguir enviando solicitudes a la instancia caída; por eso se esperan errores transitorios (se tratan en P03). Una parada ordenada (`docker compose stop`) sí se da de baja de inmediato.
 
+## Gateway: rutas y balanceo
+
+`api-gateway` (puerto `8080`) es cliente de Eureka y el único punto de entrada. Las rutas usan nombres lógicos resueltos por Spring Cloud LoadBalancer (round-robin); no hay URLs fijas.
+
+| Ruta externa | Destino | Se envía al servicio como |
+|---|---|---|
+| `/api/productos/**` | `lb://servicio-productos` | `/productos/**` |
+| `/api/pedidos/**` | `lb://servicio-pedidos` | `/pedidos/**` |
+
+- **Reintentos:** solo `GET` (idempotente), hasta 2 reintentos ante `IOException`, timeout o respuestas 5xx, con espera creciente (50–500 ms). Los `POST`, `PUT` y `PATCH` no se reintentan para no duplicar escrituras. Mientras Eureka no expulsa una instancia caída, el reintento hace que el `GET` pase a la otra instancia.
+- **Timeouts:** conexión 2 s, respuesta 10 s.
+- **Log por solicitud** (`RequestLoggingFilter`): `GW method=GET path=/api/productos/ping route=servicio-productos target=host:8082 instanceId=productos-2 status=200 ms=12`. `target` es la instancia elegida por el LoadBalancer; si el servicio responde con el header `X-Instance-Id`, aparece en `instanceId`. Es la base de la evidencia de P02 y P03. En un reintento se registra la solicitud una sola vez, con el destino del último intento.
+- **Actuator:** `/actuator/health` y `/actuator/gateway/routes`.
+
+**Verificación manual (procesos locales):** con dos instancias de `servicio-productos` (8081 y 8082), 10 solicitudes alternaron entre ambas. Al terminar de golpe la instancia 8081, las 10 solicitudes siguientes se atendieron por 8082 sin error de Gateway y, pasado el tiempo de expulsión, todas fueron a 8082.
+
 ## Puertos
 
 | Servicio | Puerto en el host |
