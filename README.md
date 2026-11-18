@@ -38,10 +38,12 @@ Detalles, decisiones y tabla de puertos en [docs/arquitectura.md](docs/arquitect
 ├── database/            Scripts de inicialización del primario y las réplicas
 ├── docs/                Arquitectura, plan de trabajo, informe de pruebas y material de referencia
 ├── requests/            Colección de solicitudes HTTP (pendiente)
-├── discovery-server/    Eureka Server (pendiente)
-├── api-gateway/         Spring Cloud Gateway (pendiente)
-├── servicio-productos/  Microservicio de catálogo e inventario (pendiente)
-├── servicio-pedidos/    Microservicio de pedidos (pendiente)
+├── persistence-routing/ Librería compartida de enrutamiento de lecturas y escrituras
+├── discovery-server/    Eureka Server
+├── api-gateway/         Spring Cloud Gateway
+├── servicio-productos/  Microservicio de catálogo e inventario
+├── servicio-pedidos/    Microservicio de pedidos
+├── pom.xml              POM padre (Maven multi-módulo); mvnw / mvnw.cmd: Maven Wrapper
 └── docker-compose.yml   Despliegue reproducible
 ```
 
@@ -86,7 +88,7 @@ Compilar o ejecutar un solo módulo:
 
 ```bash
 ./mvnw -pl discovery-server -am package
-java -jar discovery-server/target/discovery-server-0.1.0-SNAPSHOT.jar
+java -jar discovery-server/target/discovery-server-*.jar
 ```
 
 Construir la imagen de un módulo (el contexto de build es la raíz):

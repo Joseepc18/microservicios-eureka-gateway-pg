@@ -8,7 +8,7 @@ RUN chmod +x mvnw && ./mvnw -B -q -pl servicio-productos -am -DskipTests package
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 RUN useradd --system --no-create-home appuser
-COPY --from=build /workspace/servicio-productos/target/servicio-productos-*-SNAPSHOT.jar app.jar
+COPY --from=build /workspace/servicio-productos/target/servicio-productos-*.jar app.jar
 USER appuser
 EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "app.jar"]
