@@ -1,0 +1,62 @@
+# Capa de persistencia: PostgreSQL 17 con un primario y dos réplicas de lectura.
+# Los servicios Spring Boot, Eureka y Gateway se agregan a este archivo
+# en la issue de integración de Docker Compose.
+#
+# Uso: copiar .env.example a .env, ajustar valores y ejecutar `docker compose up -d`.
+
+services:
+  primary:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en el archivo .env}
+      POSTGRES_DB: ${POSTGRES_DB:-laboratorio}
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD:?Defina REPLICATION_PASSWORD en el archivo .env}
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "wal_keep_size=256MB", "-c", "hot_standby=on"]
+    volumes:
+      - primary_data:/var/lib/postgresql/data
+      - ./database/primary-init.sh:/docker-entrypoint-initdb.d/01-replication.sh:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  replica1:
+    image: postgres:17
+    user: postgres
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PGPASSWORD: ${REPLICATION_PASSWORD:?Defina REPLICATION_PASSWORD en el archivo .env}
+    entrypoint: ["/bin/bash", "/scripts/start-replica.sh"]
+    volumes:
+      - replica1_data:/var/lib/postgresql/data
+      - ./database/start-replica.sh:/scripts/start-replica.sh:ro
+    ports:
+      - "5433:5432"
+    depends_on:
+      primary:
+        condition: service_healthy
+
+  replica2:
+    image: postgres:17
+    user: postgres
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      PGPASSWORD: ${REPLICATION_PASSWORD:?Defina REPLICATION_PASSWORD en el archivo .env}
+    entrypoint: ["/bin/bash", "/scripts/start-replica.sh"]
+    volumes:
+      - replica2_data:/var/lib/postgresql/data
+      - ./database/start-replica.sh:/scripts/start-replica.sh:ro
+    ports:
+      - "5434:5432"
+    depends_on:
+      primary:
+        condition: service_healthy
+
+volumes:
+  primary_data:
+  replica1_data:
+  replica2_data:
