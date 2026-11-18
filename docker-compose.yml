@@ -1,10 +1,138 @@
-# Capa de persistencia: PostgreSQL 17 con un primario y dos réplicas de lectura.
-# Los servicios Spring Boot, Eureka y Gateway se agregan a este archivo
-# en la issue de integración de Docker Compose.
+# Sistema completo: Eureka, Gateway, dos instancias de productos, pedidos y
+# la capa PostgreSQL (1 primario + 2 réplicas de lectura).
 #
-# Uso: copiar .env.example a .env, ajustar valores y ejecutar `docker compose up -d`.
+# Uso: copiar .env.example a .env, ajustar valores y ejecutar `docker compose up -d --build`.
+#
+# Redes:
+#   red_app   -> tráfico HTTP entre Gateway, Eureka y servicios de negocio.
+#   red_datos -> tráfico hacia PostgreSQL. El Gateway no está en esta red.
+
+# Healthcheck compartido por las aplicaciones Java. La imagen JRE no trae curl ni wget,
+# así que se usa bash con /dev/tcp para consultar /actuator/health en el propio contenedor.
+# El puerto sale de la variable SERVER_PORT de cada servicio (`$$` evita que Compose la
+# interpole en el host).
+x-java-healthcheck: &java-healthcheck
+  test:
+    - CMD
+    - bash
+    - -c
+    - >-
+      exec 3<>/dev/tcp/127.0.0.1/$${SERVER_PORT}
+      && printf 'GET /actuator/health HTTP/1.0\r\n\r\n' >&3
+      && grep -q '"status":"UP"' <&3
+  interval: 5s
+  timeout: 5s
+  retries: 30
+  start_period: 20s
+
+# Variables comunes de los clientes de Eureka.
+x-eureka-client-env: &eureka-client-env
+  # Dentro de la red de Docker, Eureka se alcanza por el nombre del servicio de Compose.
+  EUREKA_URL: http://discovery-server:8761/eureka
 
 services:
+  # ---------------------------------------------------------------- Descubrimiento
+  discovery-server:
+    build:
+      context: .
+      dockerfile: discovery-server/Dockerfile
+    image: discovery-server:local
+    environment:
+      SERVER_PORT: "8761"
+    ports:
+      - "${EUREKA_PORT:-8761}:8761"
+    healthcheck: *java-healthcheck
+    networks:
+      - red_app
+
+  # ---------------------------------------------------------------- Punto de entrada
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    image: api-gateway:local
+    environment:
+      <<: *eureka-client-env
+      SERVER_PORT: "8080"
+      INSTANCE_ID: ${GATEWAY_INSTANCE_ID:-gateway-1}
+      # Se anuncia el nombre del servicio de Compose, que resuelve a la IP del contenedor
+      # en la red de aplicación.
+      EUREKA_INSTANCE_HOSTNAME: api-gateway
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    healthcheck: *java-healthcheck
+    networks:
+      - red_app
+
+  # ---------------------------------------------------------------- Servicios de negocio
+  # Las dos instancias se construyen con el mismo Dockerfile y se diferencian solo por
+  # INSTANCE_ID, puerto y nombre de host anunciado.
+  servicio-productos-1:
+    build:
+      context: .
+      dockerfile: servicio-productos/Dockerfile
+    image: servicio-productos:local
+    environment:
+      <<: *eureka-client-env
+      SERVER_PORT: "8081"
+      INSTANCE_ID: ${PRODUCTOS_1_INSTANCE_ID:-productos-1}
+      # Se anuncia el nombre del servicio (no la IP): el contenedor está en dos redes y
+      # una IP elegida al azar podría ser la de la red de datos, inalcanzable para el Gateway.
+      EUREKA_INSTANCE_HOSTNAME: servicio-productos-1
+    ports:
+      - "${PRODUCTOS_1_PORT:-8081}:8081"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    healthcheck: *java-healthcheck
+    networks:
+      - red_app
+      - red_datos
+
+  servicio-productos-2:
+    build:
+      context: .
+      dockerfile: servicio-productos/Dockerfile
+    image: servicio-productos:local
+    environment:
+      <<: *eureka-client-env
+      SERVER_PORT: "8082"
+      INSTANCE_ID: ${PRODUCTOS_2_INSTANCE_ID:-productos-2}
+      EUREKA_INSTANCE_HOSTNAME: servicio-productos-2
+    ports:
+      - "${PRODUCTOS_2_PORT:-8082}:8082"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    healthcheck: *java-healthcheck
+    networks:
+      - red_app
+      - red_datos
+
+  servicio-pedidos:
+    build:
+      context: .
+      dockerfile: servicio-pedidos/Dockerfile
+    image: servicio-pedidos:local
+    environment:
+      <<: *eureka-client-env
+      SERVER_PORT: "8083"
+      INSTANCE_ID: ${PEDIDOS_INSTANCE_ID:-pedidos-1}
+      EUREKA_INSTANCE_HOSTNAME: servicio-pedidos
+    ports:
+      - "${PEDIDOS_PORT:-8083}:8083"
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    healthcheck: *java-healthcheck
+    networks:
+      - red_app
+      - red_datos
+
+  # ---------------------------------------------------------------- Capa PostgreSQL
   primary:
     image: postgres:17
     environment:
@@ -23,6 +151,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    networks:
+      - red_datos
 
   replica1:
     image: postgres:17
@@ -36,9 +166,17 @@ services:
       - ./database/start-replica.sh:/scripts/start-replica.sh:ro
     ports:
       - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
     depends_on:
       primary:
         condition: service_healthy
+    networks:
+      - red_datos
 
   replica2:
     image: postgres:17
@@ -52,9 +190,21 @@ services:
       - ./database/start-replica.sh:/scripts/start-replica.sh:ro
     ports:
       - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
     depends_on:
       primary:
         condition: service_healthy
+    networks:
+      - red_datos
+
+networks:
+  red_app:
+  red_datos:
 
 volumes:
   primary_data:
