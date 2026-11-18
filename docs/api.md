@@ -116,4 +116,87 @@ Cada instancia usa su propia base `productos_db` con el rol `productos_app` (ver
 
 ## servicio-pedidos
 
-_Pendiente (issue #12)._
+Registro de pedidos. Para crear uno **llama a `servicio-productos` por su nombre lógico de Eureka** (`http://servicio-productos`, resuelto por Spring Cloud LoadBalancer); no hay URLs fijas entre servicios.
+
+| Desde | Base |
+|---|---|
+| Gateway (recomendado) | `http://127.0.0.1:8080/api/pedidos` |
+| Directo | `http://127.0.0.1:8083/pedidos` |
+
+Igual que productos, todas las respuestas incluyen `X-Instance-Id` y el cuerpo de error es el mismo JSON uniforme (ver arriba).
+
+### Modelo
+
+```json
+{
+  "id": 1,
+  "productoId": 1,
+  "cantidad": 2,
+  "total": 1499.80,
+  "estado": "CREADO",
+  "fecha": "2026-11-18T22:30:00.123Z"
+}
+```
+
+`estado` es `CREADO` o `CANCELADO`. `productoId` es un valor simple: no hay clave foránea ni acceso a las tablas de `servicio-productos`. `total` es `precio × cantidad`, con el precio que devolvió `servicio-productos` al crear el pedido.
+
+### Operaciones
+
+| Método y ruta | Descripción | Éxito | Errores |
+|---|---|---|---|
+| `POST /pedidos` | Crea un pedido | `201` + `Location` | `400`, `404`, `409`, `503` |
+| `GET /pedidos/{id}` | Obtiene un pedido | `200` | `404`, `400` |
+| `GET /pedidos` | Lista los pedidos | `200` | |
+| `PATCH /pedidos/{id}/cancelar` | Cancela un pedido `CREADO` | `200` | `404`, `409` |
+
+#### `POST /pedidos`
+
+```json
+{ "productoId": 1, "cantidad": 2 }
+```
+
+`productoId` debe ser positivo y `cantidad` un entero mayor o igual a 1. Pasos:
+
+1. `GET /productos/{id}` en `servicio-productos`: `404` si no existe.
+2. Valida el stock: `409` si es menor que la cantidad pedida.
+3. `PATCH /productos/{id}/stock`: descuenta el stock. Es la verificación definitiva, porque otra solicitud pudo consumirlo en el intervalo (`409` si ocurre).
+4. Guarda el pedido con el total calculado.
+
+| Código | Cuándo |
+|---|---|
+| `400` | Validación fallida o JSON malformado |
+| `404` | El producto no existe (o, en las demás rutas, el pedido) |
+| `409` | Stock insuficiente (o intentar cancelar un pedido que no está `CREADO`) |
+| `503` | `servicio-productos` no tiene instancias, no responde o supera el timeout. Mensaje: `El servicio de productos no está disponible: <causa>` |
+
+#### `PATCH /pedidos/{id}/cancelar`
+
+Cambia el estado a `CANCELADO`. **No devuelve el stock**: `servicio-productos` solo ofrece una operación para descontar. Cancelar dos veces responde `409`.
+
+### Timeouts y reintentos
+
+Las llamadas a `servicio-productos` tienen timeout de conexión de 2 s y de lectura de 5 s (`productos.client.*` en `application.yml`). **No se reintentan**: repetir el `PATCH` de stock podría descontarlo dos veces, y reintentar el `GET` sumaría espera sin garantía. Con una instancia caída, el LoadBalancer deja de elegirla cuando Eureka la expulsa (ver [arquitectura](arquitectura.md)); durante esa ventana algunas solicitudes pueden recibir `503` y el cliente debe reintentarlas.
+
+### Trazabilidad con `X-Request-Id`
+
+Cada solicitud tiene un identificador de correlación. Si el cliente envía `X-Request-Id` (solo letras, números, `.`, `_` y `-`, hasta 64 caracteres) se conserva; si no, se genera un UUID. Se devuelve en la respuesta, aparece entre corchetes en cada línea de log (`INFO [3f2a...] ...`) y `servicio-pedidos` lo reenvía a `servicio-productos`, que lo registra igual. Así una solicitud (por ejemplo de P04) se sigue en ambos logs:
+
+```bash
+curl -i -X POST http://127.0.0.1:8080/api/pedidos -H "X-Request-Id: prueba-p04-1"   -H "Content-Type: application/json" -d '{"productoId":1,"cantidad":2}'
+docker compose logs servicio-pedidos servicio-productos-1 servicio-productos-2 | grep prueba-p04-1
+```
+
+### Limitación: sin transacciones distribuidas
+
+No hay transacciones distribuidas ni Sagas. El stock se descuenta en `servicio-productos` **antes** de guardar el pedido en `pedidos_db`; son dos bases distintas y no se pueden confirmar juntas. Comportamiento esperado:
+
+- **Falla antes del descuento** (producto inexistente, stock insuficiente, servicio caído): no se modifica nada. Es el caso normal.
+- **Falla el guardado después de descontar:** el stock queda descontado y no existe el pedido. El servicio registra un `ERROR` con el `productoId`, la cantidad y el `X-Request-Id`, y responde `500`. La corrección es manual (volver a cargar el stock con `PUT /productos/{id}`).
+- **Timeout en el descuento:** el resultado es incierto, porque `servicio-productos` pudo descontar aunque la respuesta no llegara. Se responde `503` y no se crea el pedido; el stock podría haber quedado descontado.
+- **Cancelación:** no repone stock.
+
+### Persistencia
+
+`servicio-pedidos` usa su propia base, `pedidos_db`, con el rol `pedidos_app`, a través del módulo [`persistence-routing`](../persistence-routing/README.md): las escrituras (`@Transactional`) van al primario y las lecturas (`@Transactional(readOnly = true)`: `GET /pedidos` y `GET /pedidos/{id}`) se reparten por turnos entre `replica1` y `replica2`. La conexión se configura con `PERSISTENCE_ROUTING_*` en `docker-compose.yml`. Cada decisión queda en el log (`docker compose logs servicio-pedidos | grep "DB route"`).
+
+**Limitación pendiente (issue #9):** las réplicas se actualizan con un pequeño retraso, así que un `GET /pedidos/{id}` inmediatamente después de crear el pedido podría atenderlo una réplica que aún no lo tiene y responder `404`. La lectura crítica que lo evita (`@ReadFromPrimary`) está en el PR de la #9 y se aplicará a ese `GET` cuando esté integrada.

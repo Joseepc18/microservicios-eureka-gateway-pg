@@ -1,11 +1,28 @@
 spring:
   application:
     name: servicio-pedidos
+  jpa:
+    open-in-view: false
+    hibernate:
+      # El esquema lo gestiona Flyway; Hibernate solo lo valida.
+      ddl-auto: validate
+  flyway:
+    enabled: true
   cloud:
     loadbalancer:
       cache:
         # Caché de instancias del LoadBalancer (por defecto 35 s).
         ttl: 5s
+
+# Enrutamiento de persistencia (módulo persistence-routing): escrituras al primario y lecturas
+# readOnly repartidas entre las réplicas. Las réplicas se declaran por variables de entorno
+# (PERSISTENCE_ROUTING_REPLICAS_n_URL, ver docker-compose.yml); sin réplicas, todo va al primario.
+persistence:
+  routing:
+    primary:
+      url: ${DB_URL:jdbc:postgresql://localhost:5432/pedidos_db}
+      username: ${DB_USER:pedidos_app}
+      password: ${DB_PASSWORD:}
 
 server:
   port: ${SERVER_PORT:8083}
@@ -21,3 +38,24 @@ eureka:
     # Latido cada 5 s y expiración a los 10 s (por defecto 30 s y 90 s).
     lease-renewal-interval-in-seconds: 5
     lease-expiration-duration-in-seconds: 10
+
+# Identifica a la instancia que respondió (header X-Instance-Id).
+instance:
+  id: ${INSTANCE_ID:local}
+
+# Llamadas a servicio-productos (por nombre lógico de Eureka, ver ClienteProductosConfig).
+productos:
+  client:
+    connect-timeout: 2s
+    read-timeout: 5s
+
+# El identificador de correlación (X-Request-Id) aparece en cada línea de log.
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

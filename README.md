@@ -122,7 +122,7 @@ docker compose up -d --build --wait
 | servicio-productos (instancia 2) | http://127.0.0.1:8082 |
 | servicio-pedidos | http://127.0.0.1:8083 |
 
-`servicio-productos` ya expone su API REST (documentada en [docs/api.md](docs/api.md)) y se conecta a `productos_db`. `servicio-pedidos` todavía solo arranca y se registra en Eureka.
+`servicio-productos` y `servicio-pedidos` exponen su API REST (documentada en [docs/api.md](docs/api.md)) y se conectan a `productos_db` y `pedidos_db`. `servicio-pedidos` llama a `servicio-productos` por su nombre lógico en Eureka.
 
 ```bash
 curl -i http://127.0.0.1:8080/api/productos    # el header X-Instance-Id indica la instancia que respondió

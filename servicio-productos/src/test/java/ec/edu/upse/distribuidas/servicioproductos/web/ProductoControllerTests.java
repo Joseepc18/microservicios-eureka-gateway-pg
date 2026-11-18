@@ -28,7 +28,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(ProductoController.class)
-@Import({ManejadorErrores.class, InstanceIdFilter.class})
+@Import({ManejadorErrores.class, InstanceIdFilter.class, RequestIdFilter.class})
 class ProductoControllerTests {
 
     private static final String JSON_VALIDO =
@@ -53,6 +53,15 @@ class ProductoControllerTests {
                 .andExpect(header().string("X-Instance-Id", "test-1"))
                 .andExpect(jsonPath("$[0].nombre").value("Cable HDMI"))
                 .andExpect(jsonPath("$[0].stock").value(30));
+    }
+
+    @Test
+    void conservaElRequestIdRecibidoYGeneraUnoSiFalta() throws Exception {
+        when(servicio.listar()).thenReturn(List.of());
+
+        mvc.perform(get("/productos").header("X-Request-Id", "req-42"))
+                .andExpect(header().string("X-Request-Id", "req-42"));
+        mvc.perform(get("/productos")).andExpect(header().exists("X-Request-Id"));
     }
 
     @Test

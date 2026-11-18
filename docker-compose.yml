@@ -37,6 +37,15 @@ x-productos-db-env: &productos-db-env
   DB_USER: productos_app
   DB_PASSWORD: ${PRODUCTOS_DB_PASSWORD:?Defina PRODUCTOS_DB_PASSWORD en el archivo .env}
 
+# Persistencia de servicio-pedidos con persistence-routing: escrituras al primario y lecturas
+# readOnly repartidas entre las réplicas (rol pedidos_app, que se replica por WAL a las réplicas).
+x-pedidos-db-env: &pedidos-db-env
+  PERSISTENCE_ROUTING_PRIMARY_URL: jdbc:postgresql://primary:5432/pedidos_db
+  PERSISTENCE_ROUTING_PRIMARY_USERNAME: pedidos_app
+  PERSISTENCE_ROUTING_PRIMARY_PASSWORD: ${PEDIDOS_DB_PASSWORD:?Defina PEDIDOS_DB_PASSWORD en el archivo .env}
+  PERSISTENCE_ROUTING_REPLICAS_0_URL: jdbc:postgresql://replica1:5432/pedidos_db
+  PERSISTENCE_ROUTING_REPLICAS_1_URL: jdbc:postgresql://replica2:5432/pedidos_db
+
 services:
   # ---------------------------------------------------------------- Descubrimiento
   discovery-server:
@@ -129,7 +138,7 @@ services:
       dockerfile: servicio-pedidos/Dockerfile
     image: servicio-pedidos:local
     environment:
-      <<: *eureka-client-env
+      <<: [*eureka-client-env, *pedidos-db-env]
       SERVER_PORT: "8083"
       INSTANCE_ID: ${PEDIDOS_INSTANCE_ID:-pedidos-1}
       EUREKA_INSTANCE_HOSTNAME: servicio-pedidos
@@ -137,6 +146,8 @@ services:
       - "${PEDIDOS_PORT:-8083}:8083"
     depends_on:
       discovery-server:
+        condition: service_healthy
+      primary:
         condition: service_healthy
     healthcheck: *java-healthcheck
     networks:
