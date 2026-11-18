@@ -30,12 +30,14 @@ x-eureka-client-env: &eureka-client-env
   # Dentro de la red de Docker, Eureka se alcanza por el nombre del servicio de Compose.
   EUREKA_URL: http://discovery-server:8761/eureka
 
-# Conexión de servicio-productos a su base (rol productos_app creado por primary-init.sh).
-# Conexión simple al primario hasta que se integre persistence-routing (issues #7 y #8).
+# Persistencia de servicio-productos con persistence-routing: escrituras al primario y lecturas
+# readOnly repartidas entre las réplicas (rol productos_app, que se replica por WAL a las réplicas).
 x-productos-db-env: &productos-db-env
-  DB_URL: jdbc:postgresql://primary:5432/productos_db
-  DB_USER: productos_app
-  DB_PASSWORD: ${PRODUCTOS_DB_PASSWORD:?Defina PRODUCTOS_DB_PASSWORD en el archivo .env}
+  PERSISTENCE_ROUTING_PRIMARY_URL: jdbc:postgresql://primary:5432/productos_db
+  PERSISTENCE_ROUTING_PRIMARY_USERNAME: productos_app
+  PERSISTENCE_ROUTING_PRIMARY_PASSWORD: ${PRODUCTOS_DB_PASSWORD:?Defina PRODUCTOS_DB_PASSWORD en el archivo .env}
+  PERSISTENCE_ROUTING_REPLICAS_0_URL: jdbc:postgresql://replica1:5432/productos_db
+  PERSISTENCE_ROUTING_REPLICAS_1_URL: jdbc:postgresql://replica2:5432/productos_db
 
 # Persistencia de servicio-pedidos con persistence-routing: escrituras al primario y lecturas
 # readOnly repartidas entre las réplicas (rol pedidos_app, que se replica por WAL a las réplicas).

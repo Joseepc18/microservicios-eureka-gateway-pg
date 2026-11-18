@@ -1,5 +1,6 @@
 package ec.edu.upse.distribuidas.serviciopedidos.servicio;
 
+import ec.edu.upse.distribuidas.persistencerouting.ReadFromPrimary;
 import ec.edu.upse.distribuidas.serviciopedidos.cliente.ProductoDto;
 import ec.edu.upse.distribuidas.serviciopedidos.cliente.ProductosClient;
 import ec.edu.upse.distribuidas.serviciopedidos.dominio.EstadoPedido;
@@ -58,6 +59,11 @@ public class PedidoService {
         }
     }
 
+    /**
+     * Lectura crítica: se atiende desde el primario, no desde una réplica, porque el cliente suele
+     * consultar el pedido justo después de crearlo y una réplica con retraso aún podría no tenerlo.
+     */
+    @ReadFromPrimary
     @Transactional(readOnly = true)
     public Pedido obtener(Long id) {
         return repositorio.findById(id).orElseThrow(() -> new PedidoNoEncontradoException(id));

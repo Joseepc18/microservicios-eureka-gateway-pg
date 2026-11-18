@@ -1,12 +1,6 @@
 spring:
   application:
     name: servicio-productos
-  datasource:
-    # Conexión simple al primario hasta que se integre persistence-routing (issues #7 y #8).
-    # En Docker Compose la URL apunta al servicio "primary"; la clave nunca se versiona.
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/productos_db}
-    username: ${DB_USER:productos_app}
-    password: ${DB_PASSWORD:}
   jpa:
     open-in-view: false
     hibernate:
@@ -14,6 +8,16 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+
+# Enrutamiento de persistencia (módulo persistence-routing): escrituras al primario y lecturas
+# readOnly repartidas entre las réplicas. Las réplicas se declaran por variables de entorno
+# (PERSISTENCE_ROUTING_REPLICAS_n_URL, ver docker-compose.yml); sin réplicas, todo va al primario.
+persistence:
+  routing:
+    primary:
+      url: ${DB_URL:jdbc:postgresql://localhost:5432/productos_db}
+      username: ${DB_USER:productos_app}
+      password: ${DB_PASSWORD:}
 
 server:
   # Cada instancia recibe su puerto por variable de entorno (8081 y 8082 en el host).
