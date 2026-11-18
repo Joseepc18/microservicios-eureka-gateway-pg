@@ -15,9 +15,11 @@ eureka:
     # (valores por defecto: evicción cada 60 s, expiración a los 90 s).
     eviction-interval-timer-in-ms: 5000
     response-cache-update-interval-ms: 3000
-    # Con la autopreservación activa Eureka deja de expulsar instancias caídas cuando
-    # detecta pocas renovaciones, algo habitual con 2-3 instancias. Se desactiva solo
-    # en este laboratorio; en producción se mantendría activada.
+    # La autopreservación suspende la expulsión de instancias cuando las renovaciones caen
+    # por debajo de un umbral (por ejemplo, si cae un grupo grande de instancias a la vez).
+    # Se desactiva solo en este laboratorio para que el registro nunca conserve instancias
+    # muertas durante las demos; en producción se mantendría activada. Con una sola
+    # instancia caída la expulsión ocurre igualmente a los ~24 s (comprobado).
     enable-self-preservation: false
 
 management:
