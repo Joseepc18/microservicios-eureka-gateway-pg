@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Spring Boot 3.5.x es la última línea 3.x; es la que soporta el tren Spring Cloud 2025.0.x. -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.16</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>ec.edu.upse.distribuidas</groupId>
+    <artifactId>microservicios-eureka-gateway-pg</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>microservicios-eureka-gateway-pg</name>
+    <description>Microservicios con Eureka, Spring Cloud Gateway y PostgreSQL replicado</description>
+
+    <modules>
+        <module>persistence-routing</module>
+        <module>discovery-server</module>
+        <module>api-gateway</module>
+        <module>servicio-productos</module>
+        <module>servicio-pedidos</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <spring-cloud.version>2025.0.3</spring-cloud.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Librería interna: los servicios de negocio la declaran sin versión. -->
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>persistence-routing</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
