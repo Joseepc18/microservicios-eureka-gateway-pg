@@ -21,7 +21,8 @@ import reactor.core.publisher.Mono;
  * balanceo (P02) y de fallo de instancia (P03).
  *
  * <p>Formato: {@code GW method=GET path=/api/productos route=servicio-productos
- * target=172.18.0.5:8080 instanceId=productos-1 status=200 ms=12}
+ * target=servicio-productos-1:8081 instanceId=productos-1 status=200 ms=12}. El valor de
+ * {@code target} depende de cómo cada instancia se anuncia en Eureka (hostname o IP).
  */
 @Component
 public class RequestLoggingFilter implements GlobalFilter, Ordered {

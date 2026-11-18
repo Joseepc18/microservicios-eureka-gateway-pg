@@ -67,10 +67,13 @@ La autopreservación (`enable-self-preservation`) está desactivada. Cuando est�
 | `/api/productos/**` | `lb://servicio-productos` | `/productos/**` |
 | `/api/pedidos/**` | `lb://servicio-pedidos` | `/pedidos/**` |
 
-- **Reintentos:** solo `GET` (idempotente), hasta 2 reintentos ante `IOException`, timeout o respuestas 5xx, con espera creciente (50–500 ms). Los `POST`, `PUT` y `PATCH` no se reintentan para no duplicar escrituras. Mientras Eureka no expulsa una instancia caída, el reintento hace que el `GET` pase a la otra instancia.
+- **Reintentos:** solo `GET` (idempotente), hasta 2 reintentos ante `IOException`, timeout o respuestas `502`, `503` y `504`, con espera creciente (50–500 ms). Un `500` de la aplicación no se reintenta, para no repetir un `GET` que falla por un error del servicio. Los `POST`, `PUT` y `PATCH` no se reintentan para no duplicar escrituras. Mientras Eureka no expulsa una instancia caída, el reintento hace que el `GET` pase a la otra instancia.
+- **Errores transitorios esperados (P03):** durante la ventana de detección de una instancia caída (~35 s en el peor caso, ver la sección de Eureka), los `GET` se recuperan por reintento, pero las escrituras (`POST`, `PUT`, `PATCH`) que el LoadBalancer dirija a la instancia caída fallan (se observó `500` alternado) y el cliente debe reintentarlas. Si no queda ninguna instancia registrada, el Gateway responde `503`.
+- **Un `Retry` por ruta se suma al global:** el filtro `Retry` está en `default-filters`. Si se agrega otro `Retry` dentro de una ruta, no reemplaza al global, se acumula.
 - **Timeouts:** conexión 2 s, respuesta 10 s.
 - **Log por solicitud** (`RequestLoggingFilter`): `GW method=GET path=/api/productos/ping route=servicio-productos target=host:8082 instanceId=productos-2 status=200 ms=12`. `target` es la instancia elegida por el LoadBalancer; si el servicio responde con el header `X-Instance-Id`, aparece en `instanceId`. Es la base de la evidencia de P02 y P03. En un reintento se registra la solicitud una sola vez, con el destino del último intento.
-- **Actuator:** `/actuator/health` y `/actuator/gateway/routes`.
+- **Actuator:** `/actuator/health` y, en solo lectura, `/actuator/gateway/routes`, `/actuator/gateway/globalfilters` y `/actuator/gateway/routefilters`. El endpoint `gateway` llega con acceso `NONE` por defecto en Spring Boot 3.4+; se habilita con `management.endpoint.gateway.access: read-only` (no `unrestricted`, que permitiría crear y borrar rutas sin autenticación).
+- **Intentos fallidos:** el log registra solo la línea del último intento; los intentos fallidos de un reintento no aparecen en el log del Gateway.
 
 **Verificación manual (procesos locales):** con dos instancias de `servicio-productos` (8081 y 8082), 10 solicitudes alternaron entre ambas. Al terminar de golpe la instancia 8081, las 10 solicitudes siguientes se atendieron por 8082 sin error de Gateway y, pasado el tiempo de expulsión, todas fueron a 8082.
 
