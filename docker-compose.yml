@@ -30,6 +30,13 @@ x-eureka-client-env: &eureka-client-env
   # Dentro de la red de Docker, Eureka se alcanza por el nombre del servicio de Compose.
   EUREKA_URL: http://discovery-server:8761/eureka
 
+# Conexión de servicio-productos a su base (rol productos_app creado por primary-init.sh).
+# Conexión simple al primario hasta que se integre persistence-routing (issues #7 y #8).
+x-productos-db-env: &productos-db-env
+  DB_URL: jdbc:postgresql://primary:5432/productos_db
+  DB_USER: productos_app
+  DB_PASSWORD: ${PRODUCTOS_DB_PASSWORD:?Defina PRODUCTOS_DB_PASSWORD en el archivo .env}
+
 services:
   # ---------------------------------------------------------------- Descubrimiento
   discovery-server:
@@ -76,7 +83,7 @@ services:
       dockerfile: servicio-productos/Dockerfile
     image: servicio-productos:local
     environment:
-      <<: *eureka-client-env
+      <<: [*eureka-client-env, *productos-db-env]
       SERVER_PORT: "8081"
       INSTANCE_ID: ${PRODUCTOS_1_INSTANCE_ID:-productos-1}
       # Se anuncia el nombre del servicio (no la IP): el contenedor está en dos redes y
@@ -86,6 +93,8 @@ services:
       - "${PRODUCTOS_1_PORT:-8081}:8081"
     depends_on:
       discovery-server:
+        condition: service_healthy
+      primary:
         condition: service_healthy
     healthcheck: *java-healthcheck
     networks:
@@ -98,7 +107,7 @@ services:
       dockerfile: servicio-productos/Dockerfile
     image: servicio-productos:local
     environment:
-      <<: *eureka-client-env
+      <<: [*eureka-client-env, *productos-db-env]
       SERVER_PORT: "8082"
       INSTANCE_ID: ${PRODUCTOS_2_INSTANCE_ID:-productos-2}
       EUREKA_INSTANCE_HOSTNAME: servicio-productos-2
@@ -106,6 +115,8 @@ services:
       - "${PRODUCTOS_2_PORT:-8082}:8082"
     depends_on:
       discovery-server:
+        condition: service_healthy
+      primary:
         condition: service_healthy
     healthcheck: *java-healthcheck
     networks:
