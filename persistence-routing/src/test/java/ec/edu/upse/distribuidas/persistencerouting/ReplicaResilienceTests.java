@@ -332,6 +332,23 @@ class ReplicaResilienceTests {
                 .contains("intento 2/2 en otra réplica");
     }
 
+    /**
+     * {@code docker stop} hace una parada rápida: PostgreSQL corta las sesiones con
+     * {@code FATAL 57P01} e Hibernate lo envuelve en una excepción genérica, no de conexión.
+     */
+    @Test
+    void aReadCutByAServerShutdownIsRetriedOnTheOther(CapturedOutput output) {
+        Catalog catalog = transactionalProxy(new Catalog(this::statement), 2);
+        catalog.failNextWith(new IllegalStateException("JDBC exception executing SQL",
+                new SQLException("FATAL: terminating connection due to administrator command", "57P01")));
+
+        assertThat(catalog.ordinaryRead()).isEqualTo("ok");
+
+        assertThat(catalog.calls()).isEqualTo(2);
+        assertThat(used).containsExactly("replica1", "replica2");
+        assertThat(output.getOut()).contains("DB retry Catalog.ordinaryRead: fallo de conexión");
+    }
+
     @Test
     void retriesStopAtMaxAttempts() {
         Catalog catalog = transactionalProxy(new Catalog(this::statement), 2);
@@ -374,6 +391,10 @@ class ReplicaResilienceTests {
         assertThat(ConnectionFailures.isConnectionFailure(new SQLException("I/O error", "08006"))).isTrue();
         assertThat(ConnectionFailures.isConnectionFailure(
                 new IllegalStateException(new SQLException("refused", "08001")))).isTrue();
+        assertThat(ConnectionFailures.isConnectionFailure(new SQLException("admin shutdown", "57P01"))).isTrue();
+        assertThat(ConnectionFailures.isConnectionFailure(new SQLException("crash shutdown", "57P02"))).isTrue();
+        assertThat(ConnectionFailures.isConnectionFailure(new SQLException("starting up", "57P03"))).isTrue();
+        assertThat(ConnectionFailures.isConnectionFailure(new SQLException("query canceled", "57014"))).isFalse();
         assertThat(ConnectionFailures.isConnectionFailure(new SQLException("syntax error", "42601"))).isFalse();
         assertThat(ConnectionFailures.isConnectionFailure(new IllegalStateException("otro"))).isFalse();
     }

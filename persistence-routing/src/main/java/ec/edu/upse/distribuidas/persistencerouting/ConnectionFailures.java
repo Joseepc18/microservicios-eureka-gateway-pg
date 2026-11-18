@@ -3,6 +3,7 @@ package ec.edu.upse.distribuidas.persistencerouting;
 import java.sql.SQLException;
 import java.sql.SQLNonTransientConnectionException;
 import java.sql.SQLTransientConnectionException;
+import java.util.Set;
 
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.transaction.CannotCreateTransactionException;
@@ -17,9 +18,17 @@ final class ConnectionFailures {
     }
 
     /**
+     * SQLState con los que PostgreSQL corta la sesión porque el servidor se detiene o aún no
+     * acepta conexiones: {@code 57P01} (admin_shutdown, el que llega con {@code docker stop}, que
+     * hace una parada rápida), {@code 57P02} (crash_shutdown) y {@code 57P03} (cannot_connect_now).
+     * Hibernate los traduce a una excepción genérica, no a una de conexión.
+     */
+    private static final Set<String> SERVER_SHUTDOWN_STATES = Set.of("57P01", "57P02", "57P03");
+
+    /**
      * {@code true} si en la cadena de causas hay un error de conexión: SQLState de la clase
-     * {@code 08} (connection exception), las excepciones JDBC de conexión o sus traducciones de
-     * Spring.
+     * {@code 08} (connection exception) o de parada del servidor ({@code 57P01}-{@code 57P03}),
+     * las excepciones JDBC de conexión o sus traducciones de Spring.
      */
     static boolean isConnectionFailure(Throwable ex) {
         for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
@@ -28,7 +37,8 @@ final class ConnectionFailures {
                     || cause instanceof CannotCreateTransactionException) {
                 return true;
             }
-            if (cause instanceof SQLException sql && sql.getSQLState() != null && sql.getSQLState().startsWith("08")) {
+            if (cause instanceof SQLException sql && sql.getSQLState() != null
+                    && (sql.getSQLState().startsWith("08") || SERVER_SHUTDOWN_STATES.contains(sql.getSQLState()))) {
                 return true;
             }
             if (cause.getCause() == cause) {
