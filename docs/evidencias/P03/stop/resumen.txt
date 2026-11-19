@@ -69,12 +69,12 @@ Referencia documentada (docs/arquitectura.md): expulsión ~24 s; Gateway deja de
 Líneas de error del Gateway (status 5xx), hasta 15:
 
 == Recuperación: docker compose start servicio-productos-2 ==
-   Container quirky-nash-37f928-primary-1 Waiting 
-   Container quirky-nash-37f928-discovery-server-1 Waiting 
-   Container quirky-nash-37f928-discovery-server-1 Healthy 
-   Container quirky-nash-37f928-primary-1 Healthy 
-   Container quirky-nash-37f928-servicio-productos-2-1 Starting 
-   Container quirky-nash-37f928-servicio-productos-2-1 Started 
+   Container microservicios-eureka-gateway-pg-primary-1 Waiting 
+   Container microservicios-eureka-gateway-pg-discovery-server-1 Waiting 
+   Container microservicios-eureka-gateway-pg-discovery-server-1 Healthy 
+   Container microservicios-eureka-gateway-pg-primary-1 Healthy 
+   Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Starting 
+   Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Started 
 [arranque ordenado a las 19:20:46]
 Eureka: servicio-productos:productos-2 vuelve a figurar UP a los 19.0 s del comando start.
 Gateway: productos-2 vuelve a responder solicitudes a los 25.6 s del comando start.

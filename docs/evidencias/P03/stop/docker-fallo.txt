@@ -1,2 +1,2 @@
- Container quirky-nash-37f928-servicio-productos-2-1 Stopping 
- Container quirky-nash-37f928-servicio-productos-2-1 Stopped 
+ Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Stopping 
+ Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Stopped 

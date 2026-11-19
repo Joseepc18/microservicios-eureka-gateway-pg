@@ -1,2 +1,2 @@
- Container quirky-nash-37f928-servicio-productos-2-1 Killing 
- Container quirky-nash-37f928-servicio-productos-2-1 Killed 
+ Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Killing 
+ Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Killed 
