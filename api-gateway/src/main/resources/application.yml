@@ -70,3 +70,9 @@ management:
       # En Spring Boot 3.4+ el acceso por defecto es NONE. Solo lectura: permite consultar
       # rutas y filtros (/actuator/gateway/routes) sin poder crear ni borrar rutas.
       access: read-only
+
+# Caché DNS del cliente HTTP del Gateway (ver ResolucionDnsConfig): si una instancia se reinicia
+# con otra IP, su nombre se vuelve a resolver como mucho a los 5 s.
+gateway:
+  dns:
+    cache-ttl: 5s
