@@ -95,7 +95,7 @@ Dentro de la red de Compose cada contenedor usa su puerto interno (el mismo núm
 ├── database/            Scripts de inicialización del primario y de las réplicas
 ├── docs/                Arquitectura, diagramas, API, plan de trabajo, informe de pruebas y evidencias
 ├── requests/            Colección de solicitudes HTTP (.http)
-├── scripts/             Scripts de las pruebas P04-P08
+├── scripts/             Scripts de las pruebas P02-P08 (y lib/ con funciones comunes)
 ├── persistence-routing/ Librería compartida de enrutamiento de lecturas y escrituras
 ├── discovery-server/    Eureka Server
 ├── api-gateway/         Spring Cloud Gateway
@@ -112,7 +112,7 @@ Dentro de la red de Compose cada contenedor usa su puerto interno (el mismo núm
 |---|---|---|
 | Git | Clonar el repositorio | |
 | Docker con Compose v2 (`docker compose`) | Construir y ejecutar todo el sistema | En Windows y macOS, Docker Desktop. Se necesita una versión reciente de Compose (se usa `docker compose up --wait`); se desarrolló con Docker 29 y Compose 5 |
-| Conexión a Internet | La primera vez | Descarga las imágenes base, Maven y las dependencias. La primera construcción tarda varios minutos |
+| Conexión a Internet | La primera vez | Descarga las imágenes base, Maven y las dependencias. La primera construcción completa tarda unos 4 minutos (medido en Docker Desktop) |
 | Puertos libres: 8080-8083, 8761, 5432-5434 | Publicar los servicios en el host | Los de las aplicaciones se cambian en `.env`; los de PostgreSQL no |
 | Bash, `curl` y `awk` | Solo para los scripts de P02-P08 y los ejemplos con `curl` | En Windows, Git Bash (viene con Git for Windows) |
 | Java 21 | Solo para compilar o probar **fuera de Docker** | No hace falta instalar Maven: el repositorio incluye Maven Wrapper (`mvnw`) |
@@ -204,7 +204,7 @@ Desde la raíz del repositorio, con el `.env` ya creado:
 docker compose up -d --build --wait
 ```
 
-`--wait` devuelve el control cuando todos los contenedores están saludables. El orden de arranque lo controlan los healthchecks: PostgreSQL y Eureka arrancan primero; el Gateway y los servicios de negocio esperan a que estén saludables. Las réplicas esperan al primario y se inicializan solas con una copia base. Son 8 contenedores: `discovery-server`, `api-gateway`, `servicio-productos-1`, `servicio-productos-2`, `servicio-pedidos`, `primary`, `replica1` y `replica2`.
+`--wait` devuelve el control cuando todos los contenedores están saludables. La primera vez, construir las imágenes lleva unos 4 minutos; las siguientes veces es mucho más rápido. El orden de arranque lo controlan los healthchecks: Eureka y el primario arrancan primero. El Gateway espera a que Eureka esté saludable; los servicios de negocio esperan a Eureka y al primario, no a las réplicas (el módulo de persistencia las incorpora a la rotación cuando están aptas). Las réplicas esperan al primario y se inicializan solas con una copia base. Son 8 contenedores: `discovery-server`, `api-gateway`, `servicio-productos-1`, `servicio-productos-2`, `servicio-pedidos`, `primary`, `replica1` y `replica2`.
 
 ### Verificar
 
@@ -219,7 +219,7 @@ En el dashboard de Eureka (http://127.0.0.1:8761) deben aparecer `API-GATEWAY`, 
 
 ### Primeras solicitudes
 
-Todo el tráfico normal pasa por el Gateway (puerto 8080):
+Todo el tráfico normal pasa por el Gateway (puerto 8080). La primera solicitud puede tardar unos 9 s (arranque en frío); las siguientes responden en milisegundos:
 
 ```bash
 # Catálogo de ejemplo. El header X-Instance-Id indica qué instancia respondió
@@ -311,7 +311,7 @@ scripts/p03-fallo-instancia.sh     # carga continua, termina servicio-productos-
 MODO=stop scripts/p03-fallo-instancia.sh   # lo mismo con parada ordenada (docker compose stop)
 ```
 
-P03 deja la instancia otra vez levantada al terminar, incluso si se interrumpe con Ctrl+C. Con los valores por defecto aplica 90 s de carga, más la recuperación; las variables (`DURACION`, `SERVICIO`, `URL_BASE`, `SALIDA`, etc.) están descritas en el encabezado de cada script y en el informe.
+`p02-balanceo.sh` envía un `curl` por solicitud, así que en Git Bash sobre Windows tarda unos minutos: es normal. P03 deja la instancia otra vez levantada al terminar, incluso si se interrumpe con Ctrl+C. Con los valores por defecto aplica 90 s de carga, más la recuperación; las variables (`DURACION`, `SERVICIO`, `URL_BASE`, `SALIDA`, etc.) están descritas en el encabezado de cada script y en el informe.
 
 #### P04 · Comunicación entre servicios
 
@@ -344,7 +344,7 @@ Sirve igual para cualquier servicio de Compose (`servicio-productos-1`, `servici
 
 ```bash
 docker compose stop servicio-productos-2     # parada ordenada: Eureka la marca DOWN a los ~2 s
-docker compose start servicio-productos-2    # vuelve a registrarse sola (~20-30 s)
+docker compose start servicio-productos-2    # vuelve a registrarse sola (~20-40 s)
 docker compose ps                            # debe figurar (healthy)
 docker compose logs servicio-productos-2     # diagnóstico
 docker compose restart servicio-pedidos      # reiniciar un servicio
@@ -361,8 +361,9 @@ docker compose restart servicio-pedidos      # reiniciar un servicio
 Con una réplica detenida las lecturas continúan por la otra: `persistence-routing` la excluye de la rotación y, si no queda ninguna, lee del primario. Para recuperarla:
 
 ```bash
-docker compose start replica1
-docker compose ps                       # replica1 debe figurar (healthy)
+docker compose stop replica1                # provoca la caída (omitir si la réplica ya está detenida)
+docker compose start replica1               # la recupera
+docker compose ps                           # replica1 debe figurar (healthy)
 docker compose exec primary sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT application_name, state, sent_lsn, replay_lsn FROM pg_stat_replication;"'
 ```
 

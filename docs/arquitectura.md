@@ -67,7 +67,7 @@ La autopreservación (`enable-self-preservation`) está desactivada. Cuando est�
 | `/api/productos/**` | `lb://servicio-productos` | `/productos/**` |
 | `/api/pedidos/**` | `lb://servicio-pedidos` | `/pedidos/**` |
 
-- **Reintentos:** solo `GET` (idempotente), hasta 2 reintentos ante `IOException`, timeout o respuestas `502`, `503` y `504`, con espera creciente (50–500 ms). Un `500` de la aplicación no se reintenta, para no repetir un `GET` que falla por un error del servicio. Los `POST`, `PUT` y `PATCH` no se reintentan para no duplicar escrituras. Mientras Eureka no expulsa una instancia caída, el reintento hace que el `GET` pase a la otra instancia.
+- **Reintentos:** solo `GET` (idempotente), hasta 2 reintentos, con espera creciente (50–500 ms), ante `IOException`, timeout y cualquier respuesta `5xx`: el filtro `Retry` reintenta por defecto toda la serie `SERVER_ERROR` y la suma a los `statuses` configurados (`502`, `503` y `504`). Por eso un `GET` que falla con `500` por un error del servicio también se repite (se observó con el primario detenido: `GET /api/pedidos/1` devolvió `500` y `servicio-pedidos` registró 3 intentos con el mismo `X-Request-Id`). Los demás métodos (`POST`, `PUT` y `PATCH`) no se reintentan, para no duplicar escrituras. Mientras Eureka no expulsa una instancia caída, el reintento hace que el `GET` pase a la otra instancia.
 - **Errores transitorios esperados (P03):** durante la ventana de detección de una instancia caída (~35 s en el peor caso, ver la sección de Eureka), los `GET` se recuperan por reintento en su mayoría, pero no todos: en P03 hubo 9, 8 y 11 errores `500` sobre 138, 134 y 130 solicitudes en tres corridas, porque un `GET` solo falla si sus tres intentos caen en la instancia caída (cada uno espera el timeout de conexión de 2 s). Las escrituras (`POST`, `PUT`, `PATCH`) que el LoadBalancer dirija a la instancia caída fallan (se observó `500` alternado) y el cliente debe reintentarlas. Con una parada ordenada (`stop`) no hubo errores. Si no queda ninguna instancia registrada, el Gateway responde `503`.
 - **Un `Retry` por ruta se suma al global:** el filtro `Retry` está en `default-filters`. Si se agrega otro `Retry` dentro de una ruta, no reemplaza al global, se acumula.
 - **Timeouts:** conexión 2 s, respuesta 10 s.
@@ -123,21 +123,20 @@ Cuando una réplica se detiene, el primario tiene que conservar el WAL que esa r
 Estado de los slots (cuánto WAL retiene cada uno y si sigue siendo válido):
 
 ```bash
-docker compose exec primary psql -U admin -d laboratorio \
-  -c "SELECT slot_name, active, wal_status, safe_wal_size, restart_lsn FROM pg_replication_slots;"
+docker compose exec primary sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT slot_name, active, wal_status, safe_wal_size, restart_lsn FROM pg_replication_slots;"'
 ```
 
 `wal_status` es `reserved` en condiciones normales, `extended` o `unreserved` si se acerca al tope, y `lost` si el slot se invalidó. Una réplica con el slot en `lost` no puede ponerse al día y hay que reconstruirla desde una copia nueva. Se reconstruye así (borra solo el volumen de esa réplica; el slot sigue existiendo en el primario):
 
 ```bash
 docker compose rm -sf replica1
-docker volume rm microservicios-eureka-gateway-pg_replica1_data
-docker compose exec primary psql -U admin -d laboratorio \
-  -c "SELECT pg_drop_replication_slot('replica1'); SELECT pg_create_physical_replication_slot('replica1', true);"
+docker volume ls                        # buscar el volumen de replica1: <proyecto>_replica1_data
+docker volume rm <proyecto>_replica1_data
+echo "SELECT pg_drop_replication_slot('replica1'); SELECT pg_create_physical_replication_slot('replica1', true);" | docker compose exec -T primary sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 docker compose up -d replica1
 ```
 
-(El prefijo del volumen es el nombre del proyecto de Compose; `docker volume ls` lo muestra.)
+`<proyecto>` es el nombre del proyecto de Compose, que normalmente es el nombre de la carpeta del clon (`docker volume ls` muestra el nombre completo). Los mismos pasos, con su explicación, están en el [README](../README.md#una-réplica-postgresql).
 
 Cada réplica se conecta con `application_name` igual a su slot, así que `pg_stat_replication` muestra `replica1` y `replica2` en lugar de `walreceiver`.
 
@@ -156,7 +155,7 @@ El healthcheck de las réplicas usa el socket local con el usuario `POSTGRES_USE
 
 ```bash
 docker compose down -v
-docker compose up -d
+docker compose up -d --build --wait
 ```
 
 ## Puertos
