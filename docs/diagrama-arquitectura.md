@@ -127,5 +127,5 @@ Puntos que conviene recordar:
 
 - `servicio-pedidos` no abre una transacción durante las llamadas HTTP: la base de datos solo interviene al guardar el pedido.
 - No hay transacciones distribuidas. El stock se descuenta antes de guardar el pedido; si el guardado falla, queda una inconsistencia que se corrige a mano (ver [api.md](api.md#limitación-sin-transacciones-distribuidas)).
-- Las llamadas de `servicio-pedidos` a `servicio-productos` no se reintentan (un `PATCH` repetido podría descontar dos veces). Sin instancias disponibles, responde `503`.
+- La consulta de `servicio-pedidos` a `servicio-productos` (`GET`) se repite una vez en otra instancia si falla por conexión; el descuento (`PATCH`) no se reintenta, porque repetirlo podría descontar dos veces. Sin instancias disponibles, responde `503`.
 - La consulta final va al primario porque una réplica con retraso podría no tener todavía el pedido (comprobado en P07, ver [informe-pruebas.md](informe-pruebas.md)).
