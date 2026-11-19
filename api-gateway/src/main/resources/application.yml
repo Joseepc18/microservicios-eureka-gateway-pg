@@ -6,6 +6,18 @@ spring:
       cache:
         # Caché de instancias del LoadBalancer (por defecto 35 s).
         ttl: 5s
+      # Health-check activo: el LoadBalancer consulta /actuator/health de cada instancia cada 2 s
+      # y solo elige las que responden UP. Una instancia que muere sin avisar a Eureka sale de la
+      # rotación en ~2 s, sin esperar a que Eureka la expulse (~25 s). refetch-instances vuelve a
+      # pedir la lista a Eureka cada 5 s, para incorporar las instancias nuevas o recuperadas.
+      configurations: health-check
+      health-check:
+        interval: 2s
+        initial-delay: 0s
+        path:
+          default: /actuator/health
+        refetch-instances: true
+        refetch-instances-interval: 5s
     gateway:
       server:
         webflux:

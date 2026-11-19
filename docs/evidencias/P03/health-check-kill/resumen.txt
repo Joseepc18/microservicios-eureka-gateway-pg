@@ -1,0 +1,92 @@
+== P03 · Fallo de instancia ==
+Inicio:      2026-11-19 14:47:03
+Modo:        kill (docker compose kill servicio-productos-2)
+Carga:       GET http://127.0.0.1:8080/api/productos cada 200 ms durante 90 s
+Fallo en:    t=20 s   Fase 'durante': 40 s desde el fallo
+Instancia:   servicio-productos:productos-2 (servicio de Compose: servicio-productos-2)
+Detalle en:  /c/Users/Dayron Quiñonez/Documents/SEPTIMO SEMESTRE/SISTEMAS DISTRIBUIDOS/MICROSERVICIOS/microservicios-eureka-gateway-pg/docs/evidencias/P03/health-check-kill
+Estado inicial en Eureka de productos-2: UP
+
+[t=20.2 s] docker compose kill servicio-productos-2
+[t=90.2 s] fin de la carga; esperando solicitudes en curso
+Comando de fallo terminado en t=22231 ms (lanzado en t=20219 ms)
+Ritmo de carga efectivo: 383 solicitudes en 90 s = 4.26 solicitudes/s (nominal: 5.00; depende de la máquina)
+
+== Resultados por fases (tiempos medidos desde el inicio de la carga) ==
+--- Fase 'antes' (t < 20.2 s) ---
+  Solicitudes: 78   Exitosas (2xx): 78   Errores: 0
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 0   latencia máxima exitosa: 56 ms
+  Códigos HTTP:
+    200       78
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1     40
+    productos-2     38
+--- Fase 'durante' (desde el fallo, 40 s) ---
+  Solicitudes: 178   Exitosas (2xx): 178   Errores: 0
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 1   latencia máxima exitosa: 2080 ms
+  Códigos HTTP:
+    200      178
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1    177
+    productos-2      1
+--- Fase 'despues' (después de la ventana) ---
+  Solicitudes: 127   Exitosas (2xx): 127   Errores: 0
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 0   latencia máxima exitosa: 47 ms
+  Códigos HTTP:
+    200      127
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1    127
+
+== Errores en el tiempo (solicitudes en ventanas de 5 s desde el fallo) ==
+Ventana (s)         Solicitudes  Errores
+antes del fallo              78        0
++0 a +5                      20        0
++5 a +10                     23        0
++10 a +15                    23        0
++15 a +20                    22        0
++20 a +25                    22        0
++25 a +30                    23        0
++30 a +35                    22        0
++35 a +40                    23        0
++40 a +45                    23        0
++45 a +50                    20        0
++50 a +55                    19        0
++55 a +60                    20        0
++60 a +65                    23        0
++65 a +70                    22        0
+
+== Tiempos (segundos desde el comando de fallo) ==
+Errores tras el fallo:            ninguno
+Solicitudes rescatadas por reintento (>= 1500 ms): 1
+Primera / última rescatada:       +1.2 s / +1.2 s  (el Gateway aún elegía la instancia caída)
+Eureka la retira del registro:    +22.8 s  (muestreo cada ~1 s)
+Referencia documentada (docs/arquitectura.md): expulsión ~24 s; Gateway deja de enviarle tráfico ~35 s (peor caso).
+
+== Estado de la instancia en el registro de Eureka (solo cambios) ==
+  t=   0.0 s (-20.2 s respecto al fallo): UP
+  t=  43.0 s (+22.8 s respecto al fallo): AUSENTE
+
+== Log del Gateway durante la prueba: destino y estado (target / status, recuento) ==
+  servicio-productos-1:8081    200      344
+  servicio-productos-2:8082    200       39
+  (el Gateway registra una línea por solicitud con el destino del último intento)
+Líneas de error del Gateway (status 5xx), hasta 15:
+
+== Recuperación: docker compose start servicio-productos-2 ==
+   Container microservicios-eureka-gateway-pg-discovery-server-1 Waiting 
+   Container microservicios-eureka-gateway-pg-primary-1 Waiting 
+   Container microservicios-eureka-gateway-pg-discovery-server-1 Healthy 
+   Container microservicios-eureka-gateway-pg-primary-1 Healthy 
+   Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Starting 
+   Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Started 
+[arranque ordenado a las 14:48:38]
+Eureka: servicio-productos:productos-2 vuelve a figurar UP a los 18.9 s del comando start.
+Gateway: productos-2 vuelve a responder solicitudes a los 21.1 s del comando start.
+
+Comprobación posterior: 30 solicitudes seguidas
+  productos-1   15
+  productos-2   15
+  Códigos:
+    200     30
+
+Fin: 2026-11-19 14:49:07
