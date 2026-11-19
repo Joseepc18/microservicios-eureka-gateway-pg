@@ -1,0 +1,9 @@
+$ curl -s -H "Accept: application/json" http://127.0.0.1:8761/eureka/apps | tr "{" "\n" | grep instanceId   (extracto: una línea por instancia)
+instanceId=servicio-pedidos:pedidos-1  app=SERVICIO-PEDIDOS  hostName=servicio-pedidos  ip=172.22.0.4  status=UP
+instanceId=api-gateway:gateway-1  app=API-GATEWAY  hostName=api-gateway  ip=172.22.0.3  status=UP
+instanceId=servicio-productos:productos-2  app=SERVICIO-PRODUCTOS  hostName=servicio-productos-2  ip=172.21.0.5  status=UP
+instanceId=servicio-productos:productos-1  app=SERVICIO-PRODUCTOS  hostName=servicio-productos-1  ip=172.21.0.6  status=UP
+
+$ curl -s -H "Accept: application/json" http://127.0.0.1:8761/eureka/apps/SERVICIO-PRODUCTOS | tr "{" "\n" | grep instanceId
+instanceId=servicio-productos:productos-2  app=SERVICIO-PRODUCTOS  hostName=servicio-productos-2  ip=172.21.0.5  status=UP
+instanceId=servicio-productos:productos-1  app=SERVICIO-PRODUCTOS  hostName=servicio-productos-1  ip=172.21.0.6  status=UP
