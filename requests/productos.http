@@ -50,6 +50,15 @@ Content-Type: application/json
   "cantidad": 5
 }
 
+### Reponer stock del producto creado (25 -> 27). Es la operación que usa servicio-pedidos al cancelar
+# Esperado: 200
+PATCH {{gateway}}/api/productos/{{crearProducto.response.body.$.id}}/stock/reponer
+Content-Type: application/json
+
+{
+  "cantidad": 2
+}
+
 ### Eliminar el producto creado
 # Esperado: 204
 DELETE {{gateway}}/api/productos/{{crearProducto.response.body.$.id}}

@@ -55,6 +55,23 @@ public class ProductosClient {
         }
     }
 
+    /**
+     * Repone stock al cancelar un pedido. No se reintenta: repetir el PATCH podría reponer dos
+     * veces.
+     */
+    public void reponerStock(Long id, int cantidad) {
+        try {
+            rest.patch().uri("/productos/{id}/stock/reponer", id)
+                    .body(Map.of("cantidad", cantidad))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new ProductoNoEncontradoException(id);
+        } catch (RuntimeException e) {
+            throw noDisponible(e);
+        }
+    }
+
     private static ServicioProductosNoDisponibleException noDisponible(RuntimeException causa) {
         String detalle;
         if (causa instanceof ResourceAccessException) {

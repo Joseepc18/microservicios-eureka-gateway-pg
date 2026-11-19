@@ -53,6 +53,7 @@ Al iniciar, Flyway crea la tabla `producto` y carga 5 productos de ejemplo.
 | `PUT /productos/{id}` | Reemplaza los datos de un producto | `200` | `400`, `404` |
 | `DELETE /productos/{id}` | Elimina un producto | `204` | `404` |
 | `PATCH /productos/{id}/stock` | Descuenta stock | `200` (producto actualizado) | `400`, `404`, `409` |
+| `PATCH /productos/{id}/stock/reponer` | Repone stock (al cancelar un pedido) | `200` (producto actualizado) | `400`, `404` |
 
 #### `PATCH /productos/{id}/stock`
 
@@ -63,6 +64,10 @@ Operación usada por `servicio-pedidos`. Cuerpo:
 ```
 
 `cantidad` es obligatoria y debe ser un entero mayor o igual a 1. El descuento es una sola sentencia atómica (`UPDATE ... WHERE stock >= cantidad`), por lo que dos instancias que descuenten a la vez nunca dejan el stock en negativo. Si el stock es insuficiente responde `409` y no modifica nada.
+
+#### `PATCH /productos/{id}/stock/reponer`
+
+Operación usada por `servicio-pedidos` al cancelar un pedido. Mismo cuerpo que el descuento (`{ "cantidad": 3 }`, entero mayor o igual a 1). Suma la cantidad sobre el valor actual en una sola sentencia atómica (`UPDATE ... SET stock = stock + cantidad`), así que no pisa los descuentos que hagan otras instancias a la vez. Responde `404` si el producto no existe.
 
 ### Errores
 
@@ -151,7 +156,7 @@ Igual que productos, todas las respuestas incluyen `X-Instance-Id` y el cuerpo d
 | `POST /pedidos` | Crea un pedido | `201` + `Location` | `400`, `404`, `409`, `503` |
 | `GET /pedidos/{id}` | Obtiene un pedido | `200` | `404`, `400` |
 | `GET /pedidos` | Lista los pedidos | `200` | |
-| `PATCH /pedidos/{id}/cancelar` | Cancela un pedido `CREADO` | `200` | `404`, `409` |
+| `PATCH /pedidos/{id}/cancelar` | Cancela un pedido `CREADO` y repone su stock | `200` | `404`, `409`, `503` |
 
 #### `POST /pedidos`
 
@@ -175,7 +180,13 @@ Igual que productos, todas las respuestas incluyen `X-Instance-Id` y el cuerpo d
 
 #### `PATCH /pedidos/{id}/cancelar`
 
-Cambia el estado a `CANCELADO`. **No devuelve el stock**: `servicio-productos` solo ofrece una operación para descontar. Cancelar dos veces responde `409`.
+Cambia el estado a `CANCELADO` y **repone el stock** del producto en `servicio-productos` (`PATCH /productos/{id}/stock/reponer`). Pasos:
+
+1. Lee el pedido en el primario (lectura crítica: puede haberse creado hace un instante). `404` si no existe.
+2. Lo pasa de `CREADO` a `CANCELADO` con una sentencia condicional (`UPDATE ... WHERE estado = 'CREADO'`). Si ya estaba cancelado, o si otra solicitud lo canceló al mismo tiempo, responde `409`: así el stock se repone **una sola vez** aunque lleguen dos cancelaciones a la vez.
+3. Repone el stock. Si `servicio-productos` no responde, el pedido **vuelve a `CREADO`** y se responde `503`, para que el cliente reintente la cancelación. Si el producto ya no existe, el pedido queda cancelado igualmente (no hay stock que reponer) y se registra un aviso.
+
+El `PATCH` de reposición no se reintenta, por la misma razón que el descuento.
 
 ### Timeouts y reintentos
 
@@ -199,9 +210,9 @@ docker compose logs servicio-pedidos servicio-productos-1 servicio-productos-2 |
 No hay transacciones distribuidas ni Sagas. El stock se descuenta en `servicio-productos` **antes** de guardar el pedido en `pedidos_db`; son dos bases distintas y no se pueden confirmar juntas. Comportamiento esperado:
 
 - **Falla antes del descuento** (producto inexistente, stock insuficiente, servicio caído): no se modifica nada. Es el caso normal.
-- **Falla el guardado después de descontar:** el stock queda descontado y no existe el pedido. El servicio registra un `ERROR` con el `productoId`, la cantidad y el `X-Request-Id`, y responde `500`. La corrección es manual (volver a cargar el stock con `PUT /productos/{id}`).
+- **Falla el guardado después de descontar:** el stock queda descontado y no existe el pedido. El servicio registra un `ERROR` con el `productoId`, la cantidad y el `X-Request-Id`, y responde `500`. La corrección es manual (con `PATCH /productos/{id}/stock/reponer`, que suma sin pisar otros cambios).
 - **Timeout en el descuento:** el resultado es incierto, porque `servicio-productos` pudo descontar aunque la respuesta no llegara. Se responde `503` y no se crea el pedido; el stock podría haber quedado descontado.
-- **Cancelación:** no repone stock.
+- **Timeout al reponer en una cancelación:** el resultado también es incierto: `servicio-productos` pudo reponer aunque la respuesta no llegara. El pedido vuelve a `CREADO` y se responde `503`; si el cliente reintenta la cancelación, el stock podría reponerse dos veces.
 
 ### Persistencia
 

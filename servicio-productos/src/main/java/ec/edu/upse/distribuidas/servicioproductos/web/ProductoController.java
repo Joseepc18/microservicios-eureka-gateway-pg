@@ -57,4 +57,10 @@ public class ProductoController {
     public ProductoResponse descontarStock(@PathVariable Long id, @Valid @RequestBody StockRequest datos) {
         return ProductoResponse.de(servicio.descontarStock(id, datos.cantidad()));
     }
+
+    /** Repone stock (lo usa servicio-pedidos al cancelar un pedido). 404 si el producto no existe. */
+    @PatchMapping("/{id}/stock/reponer")
+    public ProductoResponse reponerStock(@PathVariable Long id, @Valid @RequestBody StockRequest datos) {
+        return ProductoResponse.de(servicio.reponerStock(id, datos.cantidad()));
+    }
 }
