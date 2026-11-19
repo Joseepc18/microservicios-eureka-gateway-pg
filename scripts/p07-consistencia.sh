@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # P07 · Consistencia de lectura.
-# Crea pedidos y los consulta de inmediato con GET /api/pedidos/{id}, la operación crítica de
-# servicio-pedidos (@ReadFromPrimary): se atiende en el primario aunque sea de solo lectura.
-# Para mostrar por qué hace falta, pausa un momento el replay de WAL de las réplicas: una lectura
-# ordinaria (GET /api/pedidos, en réplica) no ve el pedido recién creado y la crítica sí.
+# Crea pedidos y los consulta de inmediato con GET /api/pedidos/{id}?consistencia=fuerte, la
+# lectura crítica de servicio-pedidos (@ReadFromPrimary): se atiende en el primario aunque sea de
+# solo lectura. Para mostrar por qué hace falta, pausa un momento el replay de WAL de las réplicas:
+# la lectura ordinaria del mismo pedido (GET /api/pedidos/{id}, en réplica) no lo encuentra y la
+# crítica sí.
 # Evidencia en docs/evidencias/P07.
 #
 # Uso: scripts/p07-consistencia.sh [repeticiones]
@@ -34,8 +35,8 @@ titulo "2. Escritura seguida de lectura crítica inmediata ($REPETICIONES veces)
 encontrados=0; en_primario=0
 for i in $(seq 1 "$REPETICIONES"); do
     crear_pedido "p07-crear-$i"
-    r=$(http GET "/api/pedidos/$PEDIDO_ID" "p07-leer-$i")
-    echo "$(hora) GET /api/pedidos/$PEDIDO_ID [p07-leer-$i] -> $r $(tr -d '\n' < "$CUERPO" | cut -c1-120)"
+    r=$(http GET "/api/pedidos/$PEDIDO_ID?consistencia=fuerte" "p07-leer-$i")
+    echo "$(hora) GET /api/pedidos/$PEDIDO_ID?consistencia=fuerte [p07-leer-$i] -> $r $(tr -d '\n' < "$CUERPO" | cut -c1-120)"
     if [ "${r%% *}" = 200 ]; then encontrados=$((encontrados + 1)); fi
 done
 sleep 2
@@ -51,12 +52,12 @@ for nodo in $REPLICAS; do
 done
 crear_pedido p07-contraste-crear
 ID_CONTRASTE=$PEDIDO_ID
-r=$(http GET "/api/pedidos/$ID_CONTRASTE" p07-contraste-critica)
-echo "$(hora) GET /api/pedidos/$ID_CONTRASTE (crítica) [p07-contraste-critica] -> $r"
+r=$(http GET "/api/pedidos/$ID_CONTRASTE?consistencia=fuerte" p07-contraste-critica)
+echo "$(hora) GET /api/pedidos/$ID_CONTRASTE?consistencia=fuerte (crítica) [p07-contraste-critica] -> $r"
 critica_ok=$([ "${r%% *}" = 200 ] && echo si || echo no)
-r=$(http GET /api/pedidos p07-contraste-ordinaria)
-if grep -q "\"id\":$ID_CONTRASTE[,}]" "$CUERPO"; then ordinaria_ve=si; else ordinaria_ve=no; fi
-echo "$(hora) GET /api/pedidos (ordinaria) [p07-contraste-ordinaria] -> $r, incluye el pedido $ID_CONTRASTE: $ordinaria_ve"
+r=$(http GET "/api/pedidos/$ID_CONTRASTE" p07-contraste-ordinaria)
+ordinaria_ve=$([ "${r%% *}" = 200 ] && echo si || echo no)
+echo "$(hora) GET /api/pedidos/$ID_CONTRASTE (ordinaria) [p07-contraste-ordinaria] -> $r, encuentra el pedido: $ordinaria_ve"
 for nodo in $REPLICAS; do
     sql "$nodo" pedidos_db "SELECT '$nodo' AS nodo, count(*) AS tiene_el_pedido FROM pedido WHERE id = $ID_CONTRASTE"
 done
@@ -64,9 +65,9 @@ sql primary pedidos_db "SELECT 'primary' AS nodo, count(*) AS tiene_el_pedido FR
 echo "Se reanuda el replay:"
 reanudar_replay
 sleep 1
-r=$(http GET /api/pedidos p07-contraste-despues)
-if grep -q "\"id\":$ID_CONTRASTE[,}]" "$CUERPO"; then despues_ve=si; else despues_ve=no; fi
-echo "$(hora) GET /api/pedidos (ordinaria) [p07-contraste-despues] -> $r, incluye el pedido $ID_CONTRASTE: $despues_ve"
+r=$(http GET "/api/pedidos/$ID_CONTRASTE" p07-contraste-despues)
+despues_ve=$([ "${r%% *}" = 200 ] && echo si || echo no)
+echo "$(hora) GET /api/pedidos/$ID_CONTRASTE (ordinaria) [p07-contraste-despues] -> $r, encuentra el pedido: $despues_ve"
 sleep 2
 for rid in p07-contraste-crear p07-contraste-critica p07-contraste-ordinaria p07-contraste-despues; do
     echo "$rid -> $(nodo_de "$rid")"

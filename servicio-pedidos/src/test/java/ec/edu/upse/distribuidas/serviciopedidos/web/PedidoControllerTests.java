@@ -1,5 +1,7 @@
 package ec.edu.upse.distribuidas.serviciopedidos.web;
 
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -117,6 +119,31 @@ class PedidoControllerTests {
     void tipoDeContenidoNoSoportadoDevuelve415() throws Exception {
         mvc.perform(post("/pedidos").contentType(MediaType.TEXT_PLAIN).content("hola"))
                 .andExpect(status().isUnsupportedMediaType());
+    }
+
+    @Test
+    void obtenerSinParametroEsUnaLecturaOrdinaria() throws Exception {
+        when(servicio.obtener(1L)).thenReturn(pedido());
+
+        mvc.perform(get("/pedidos/1")).andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("CREADO"));
+
+        verify(servicio).obtener(1L);
+        verify(servicio, never()).obtenerDesdePrimario(1L);
+    }
+
+    @Test
+    void obtenerConConsistenciaFuerteLeeDelPrimario() throws Exception {
+        when(servicio.obtenerDesdePrimario(1L)).thenReturn(pedido());
+
+        mvc.perform(get("/pedidos/1").param("consistencia", "fuerte")).andExpect(status().isOk());
+
+        verify(servicio).obtenerDesdePrimario(1L);
+        verify(servicio, never()).obtener(1L);
+    }
+
+    @Test
+    void consistenciaDesconocidaDevuelve400() throws Exception {
+        mvc.perform(get("/pedidos/1").param("consistencia", "maxima")).andExpect(status().isBadRequest());
     }
 
     @Test

@@ -154,7 +154,7 @@ Igual que productos, todas las respuestas incluyen `X-Instance-Id` y el cuerpo d
 | Método y ruta | Descripción | Éxito | Errores |
 |---|---|---|---|
 | `POST /pedidos` | Crea un pedido | `201` + `Location` | `400`, `404`, `409`, `503` |
-| `GET /pedidos/{id}` | Obtiene un pedido | `200` | `404`, `400` |
+| `GET /pedidos/{id}` | Obtiene un pedido. `?consistencia=fuerte` lo lee del primario (ver Persistencia) | `200` | `404`, `400` |
 | `GET /pedidos` | Lista los pedidos | `200` | |
 | `PATCH /pedidos/{id}/cancelar` | Cancela un pedido `CREADO` y repone su stock | `200` | `404`, `409`, `503` |
 
@@ -216,6 +216,13 @@ No hay transacciones distribuidas ni Sagas. El stock se descuenta en `servicio-p
 
 ### Persistencia
 
-`servicio-pedidos` usa su propia base, `pedidos_db`, con el rol `pedidos_app`, a través del módulo [`persistence-routing`](../persistence-routing/README.md): las escrituras (`@Transactional`) van al primario y las lecturas (`@Transactional(readOnly = true)`: `GET /pedidos` y `GET /pedidos/{id}`) se reparten por turnos entre `replica1` y `replica2`. La conexión se configura con `PERSISTENCE_ROUTING_*` en `docker-compose.yml`. Cada decisión queda en el log (`docker compose logs servicio-pedidos | grep "DB route"`).
+`servicio-pedidos` usa su propia base, `pedidos_db`, con el rol `pedidos_app`, a través del módulo [`persistence-routing`](../persistence-routing/README.md): las escrituras (`@Transactional`) van al primario y las lecturas ordinarias (`@Transactional(readOnly = true)`: `GET /pedidos` y `GET /pedidos/{id}`) se reparten por turnos entre `replica1` y `replica2`. La conexión se configura con `PERSISTENCE_ROUTING_*` en `docker-compose.yml`. Cada decisión queda en el log (`docker compose logs servicio-pedidos | grep "DB route"`).
 
-**Lectura crítica:** `GET /pedidos/{id}` se atiende siempre desde el primario (`@ReadFromPrimary`), porque el cliente suele consultar el pedido justo después de crearlo y las réplicas se actualizan con un pequeño retraso. `GET /pedidos` (el listado) sí se reparte entre las réplicas. El log lo marca así: `DB route=PRIMARY node=primary tx=read-only read=critical`.
+**Lectura ordinaria y lectura crítica de un pedido.** `GET /pedidos/{id}` tiene dos modos, que elige el cliente con el parámetro `consistencia`:
+
+| Solicitud | Tipo | Nodo | Cuándo usarla |
+|---|---|---|---|
+| `GET /pedidos/{id}` (o `?consistencia=eventual`) | Ordinaria | Una réplica, por turnos | Consultas normales. Acepta consistencia eventual: un pedido creado o cancelado hace un instante podría no verse todavía (`404` o estado anterior) |
+| `GET /pedidos/{id}?consistencia=fuerte` | Crítica (`@ReadFromPrimary`) | El primario | Leer lo que el mismo cliente acaba de escribir, por ejemplo justo después de `POST /pedidos` |
+
+Cualquier otro valor de `consistencia` responde `400`. La replicación es asíncrona y las réplicas se actualizan con un pequeño retraso (acotado por `max-lag`, 10 s), así que la lectura crítica es la que garantiza ver la escritura anterior. El log distingue las dos: `DB route=REPLICA node=replica1 tx=read-only` y `DB route=PRIMARY node=primary tx=read-only read=critical`.
