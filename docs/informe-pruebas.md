@@ -34,11 +34,33 @@ Responsable de cada escenario indicado entre paréntesis.
 ## P04 · Comunicación entre servicios (Integrante 3)
 
 - **Objetivo:** ejecutar una operación de negocio que requiera una llamada real de un microservicio a otro mediante descubrimiento dinámico.
-- **Procedimiento:**
-- **Resultado esperado:**
-- **Resultado obtenido:** trazas de solicitud y respuesta, resultado funcional y manejo de errores.
-- **Evidencia:**
-- **Análisis:**
+- **Procedimiento:** con el sistema completo levantado, ejecutar `scripts/p04-comunicacion.sh`. La operación es crear un pedido: `servicio-pedidos` consulta el producto en `servicio-productos` (`GET /productos/{id}`) y descuenta su stock (`PATCH /productos/{id}/stock`) llamándolo por su nombre lógico de Eureka (`http://servicio-productos`), sin direcciones fijas. El script:
+  1. comprueba que los servicios están `healthy` y que Eureka tiene registradas las dos instancias de `servicio-productos`;
+  2. **caso correcto:** crea un producto (precio 20.00, stock 10) y un pedido de 3 unidades por el Gateway con `X-Request-Id: p04-ok-1`; comprueba el total y el stock restante, y sigue ese identificador en los logs de ambos servicios;
+  3. **producto inexistente:** pide el producto 999999;
+  4. **stock insuficiente:** pide 5 unidades de un producto con stock 2;
+  5. **`servicio-productos` detenido:** ejecuta `docker compose stop servicio-productos-1 servicio-productos-2` y crea un pedido inmediatamente y otro 15 s después, con Eureka ya sin instancias; luego consulta `GET /api/productos` por el Gateway;
+  6. vuelve a iniciar las instancias, espera su registro en Eureka y crea otro pedido.
+
+  En cada caso de error comprueba además que no se guardó ningún pedido (`SELECT count(*) FROM pedido`).
+- **Resultado esperado:** el caso correcto responde `201`, descuenta el stock en `servicio-productos` y deja el mismo `X-Request-Id` en los logs de ambos servicios. Los errores responden `404`, `409` y `503` con un mensaje claro y sin crear pedidos. Tras restaurar las instancias, el sistema vuelve a crear pedidos.
+- **Resultado obtenido:** ejecución del 2026-11-19 a las 03:36 UTC; las 16 comprobaciones del script resultaron correctas (`P04 OK`).
+  - **Descubrimiento:** Eureka listó `api-gateway:gateway-1`, `servicio-pedidos:pedidos-1`, `servicio-productos:productos-1` y `servicio-productos:productos-2`.
+  - **Caso correcto:** `POST /api/pedidos` respondió `201` con total `60.00` (3 × 20.00) y el stock del producto pasó de 10 a 7. El `GET` del pedido respondió `200`. En los logs, `p04-ok-1` aparece en `servicio-pedidos` y en `servicio-productos`: el `GET /productos/6` lo atendió la instancia `productos-2` y el `PATCH /productos/6/stock` la instancia `productos-1`, es decir, el LoadBalancer eligió una instancia distinta para cada llamada.
+  - **Producto inexistente:** `404` con `No existe el producto con id 999999`; el número de pedidos no cambió.
+  - **Stock insuficiente:** `409` con `Stock insuficiente para el producto 7 (solicitado: 5)`; no se creó el pedido y el stock siguió en 2.
+  - **`servicio-productos` detenido:** ambas solicitudes respondieron `503`. La inmediata tardó 2,06 s y dijo `sin respuesta (timeout o error de conexión)`; la de 15 s después respondió en 0,03 s con `no hay instancias registradas en Eureka` (Eureka ya tenía 0 instancias). `GET /api/productos` por el Gateway también respondió `503`. `servicio-pedidos` siguió `healthy`.
+  - **Recuperación:** 63 s después del `start` las dos instancias estaban `healthy` y registradas en Eureka, y el siguiente pedido respondió `201` al primer intento.
+
+  ```
+  p04-ok-1 servicio-productos-2  REQ method=GET   path=/productos/6        status=200
+  p04-ok-1 servicio-productos-1  REQ method=PATCH path=/productos/6/stock  status=200
+  p04-ok-1 servicio-pedidos-1    Pedido 1 creado: productoId=6 cantidad=3 total=60.00
+  p04-ok-1 servicio-pedidos-1    REQ method=POST path=/pedidos status=201
+  p04-503  servicio-pedidos-1    No servers available for service: servicio-productos
+  ```
+- **Evidencia:** [salida completa](evidencias/P04/salida.txt) y [trazas de ambos servicios por X-Request-Id](evidencias/P04/trazas.txt).
+- **Análisis:** `servicio-pedidos` no conoce ninguna dirección de `servicio-productos`: su cliente HTTP usa el nombre lógico y Spring Cloud LoadBalancer elige una instancia del registro de Eureka en cada llamada (round-robin, con caché de 5 s). Por eso las dos llamadas de un mismo pedido pueden ir a instancias distintas. El `X-Request-Id` que llega por el Gateway se conserva en `servicio-pedidos`, se reenvía a `servicio-productos` y aparece en cada línea de log de ambos, lo que permite reconstruir la operación completa. Los errores se traducen según su origen: `404` y `409` los decide `servicio-productos` y `servicio-pedidos` los reenvía con el mismo código; `503` lo decide `servicio-pedidos` cuando no consigue hablar con `servicio-productos`. La diferencia de tiempos del `503` muestra la ventana de detección de la caída: inmediatamente después de detener las instancias, el LoadBalancer aún puede conservarlas en su caché (5 s) y la llamada falla tras unos 2 s, coherente con el timeout de conexión configurado (2 s); cuando el registro ya no las tiene, responde al instante. Un `PATCH` de stock no se reintenta, para no descontar dos veces, de modo que el cliente debe reintentar el pedido. El script espera 2 s tras crear un producto porque `GET /productos/{id}` se atiende desde una réplica y una réplica con retraso podría no tenerlo todavía; la descripción de esta limitación está en `docs/api.md`.
 
 ## P05 · Enrutamiento de base de datos (Integrante 2)
 
