@@ -52,8 +52,8 @@ Responsable de cada escenario indicado entre paréntesis.
 - **Resultado esperado:** las 4 escrituras en `PRIMARY node=primary tx=read-write`; las 10 lecturas en `REPLICA`, alternando `replica1` y `replica2` (5 y 5); los pedidos presentes en los tres nodos.
 - **Resultado obtenido:** ejecución del 2026-11-18 a las 23:39:49 UTC.
   - Las 4 escrituras respondieron `201` y las atendió el primario (`DB route=PRIMARY node=primary tx=read-write`).
-  - Las 10 lecturas respondieron `200` en 12-43 ms. Se alternaron en orden: `replica1`, `replica2`, `replica1`... (5 y 5).
-  - Consultas SQL: los 4 pedidos están en `primary`, `replica1` y `replica2`. `pg_is_in_recovery()` es `f` en el primario y `t` en las réplicas. Cada nodo tiene abiertas 5 conexiones de `pedidos_app`, una por cada pool del módulo.
+  - Las 10 lecturas respondieron `200` en 11-14 ms. Se alternaron en orden: `replica1`, `replica2`, `replica1`... (5 y 5).
+  - Consultas SQL: los 4 pedidos están en `primary`, `replica1` y `replica2`. `pg_is_in_recovery()` es `f` en el primario y `t` en las réplicas. Cada nodo tiene abiertas 5 conexiones de `pedidos_app`: el módulo crea un pool de HikariCP por nodo, con `maximum-pool-size` = 5, y HikariCP las mantiene abiertas porque `minimum-idle` toma ese mismo valor.
 
   ```
   p05-escritura-1 -> DB route=PRIMARY node=primary tx=read-write
@@ -81,7 +81,7 @@ Responsable de cada escenario indicado entre paréntesis.
 - **Resultado obtenido:** ejecución del 2026-11-18 a las 23:40:11 UTC.
   - `replica1` quedó `Exited (0)` a las 23:40:14.
   - Las **30 lecturas respondieron `200`, sin errores**, y todas las atendió `replica2`.
-  - La primera lectura a la que le tocaba `replica1` (`p06-durante-2`) tardó 3,0 s, el `connection-timeout` del pool. En ese momento el módulo excluyó la réplica y atendió la lectura en `replica2`. Las demás tardaron 10-36 ms.
+  - La primera lectura a la que le tocaba `replica1` (`p06-durante-2`) tardó 3,0 s, el `connection-timeout` del pool. En ese momento el módulo excluyó la réplica y atendió la lectura en `replica2`. Las demás tardaron 10-39 ms.
   - El primario y `replica2` siguieron respondiendo consultas SQL. `pg_stat_replication` solo mostró `replica2` y el slot `replica1` quedó `active = f`.
 
   ```
