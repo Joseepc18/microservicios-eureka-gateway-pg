@@ -1,0 +1,49 @@
+# P04 complementaria · Pedidos con una instancia de servicio-productos caída (reintento del LoadBalancer)
+# Ejecutado: 2026-11-19 19:09:19 UTC
+
+19:09:19 docker compose kill servicio-productos-2   (sin avisar a Eureka)
+
+Pedidos creados de inmediato, mientras Eureka aún registra la instancia caída:
+19:09:22 POST /api/pedidos [p04-reintento-1] -> 503 2.028066s
+19:09:24 POST /api/pedidos [p04-reintento-2] -> 503 2.034818s
+19:09:26 POST /api/pedidos [p04-reintento-3] -> 503 2.041971s
+19:09:28 POST /api/pedidos [p04-reintento-4] -> 201 2.140504s
+19:09:31 POST /api/pedidos [p04-reintento-5] -> 201 2.045210s
+19:09:35 POST /api/pedidos [p04-reintento-6] -> 201 4.650476s
+19:09:35 POST /api/pedidos [p04-reintento-7] -> 201 0.062013s
+19:09:36 POST /api/pedidos [p04-reintento-8] -> 201 0.060468s
+19:09:36 POST /api/pedidos [p04-reintento-9] -> 201 0.084104s
+19:09:36 POST /api/pedidos [p04-reintento-10] -> 201 0.068637s
+
+Log de servicio-pedidos: llamadas a servicio-productos que se repitieron en otra instancia
+  productos-1 2026-11-19T19:09:20.421Z  INFO [p04-reintento-1] 1 --- [servicio-productos] [nio-8081-exec-7] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=5
+  productos-1 2026-11-19T19:09:22.539Z  INFO [p04-reintento-2] 1 --- [servicio-productos] [nio-8081-exec-8] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=8
+  productos-1 2026-11-19T19:09:24.655Z  INFO [p04-reintento-3] 1 --- [servicio-productos] [io-8081-exec-10] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=3
+  productos-1 2026-11-19T19:09:28.763Z  INFO [p04-reintento-4] 1 --- [servicio-productos] [nio-8081-exec-1] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=3
+  productos-1 2026-11-19T19:09:30.985Z  INFO [p04-reintento-5] 1 --- [servicio-productos] [nio-8081-exec-4] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=4
+  productos-1 2026-11-19T19:09:35.715Z  INFO [p04-reintento-6] 1 --- [servicio-productos] [nio-8081-exec-7] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=5
+  productos-1 2026-11-19T19:09:35.882Z  INFO [p04-reintento-7] 1 --- [servicio-productos] [nio-8081-exec-9] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=4
+  productos-1 2026-11-19T19:09:36.044Z  INFO [p04-reintento-8] 1 --- [servicio-productos] [nio-8081-exec-1] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=6
+  productos-1 2026-11-19T19:09:36.273Z  INFO [p04-reintento-9] 1 --- [servicio-productos] [nio-8081-exec-3] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=6
+  productos-1 2026-11-19T19:09:36.482Z  INFO [p04-reintento-10] 1 --- [servicio-productos] [nio-8081-exec-5] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/1 status=200 ms=7
+
+Resultado: 7 de 10 pedidos creados con servicio-productos-2 caída
+
+19:09:39 docker compose start servicio-productos-2
+
+Causa de los 503 (log de servicio-pedidos):
+2026-11-19T19:09:22.426Z [p04-reintento-1] sin respuesta (timeout o error de conexión)
+2026-11-19T19:09:22.430Z [p04-reintento-1] REQ method=POST path=/pedidos status=503 ms=2018
+2026-11-19T19:09:24.545Z [p04-reintento-2] sin respuesta (timeout o error de conexión)
+2026-11-19T19:09:24.548Z [p04-reintento-2] REQ method=POST path=/pedidos status=503 ms=2022
+2026-11-19T19:09:26.660Z [p04-reintento-3] sin respuesta (timeout o error de conexión)
+2026-11-19T19:09:26.662Z [p04-reintento-3] REQ method=POST path=/pedidos status=503 ms=2013
+2026-11-19T19:09:28.881Z [p04-reintento-4] REQ method=POST path=/pedidos status=201 ms=2129
+2026-11-19T19:09:31.009Z [p04-reintento-5] REQ method=POST path=/pedidos status=201 ms=2035
+2026-11-19T19:09:35.740Z [p04-reintento-6] REQ method=POST path=/pedidos status=201 ms=4640
+2026-11-19T19:09:35.905Z [p04-reintento-7] REQ method=POST path=/pedidos status=201 ms=33
+2026-11-19T19:09:36.077Z [p04-reintento-8] REQ method=POST path=/pedidos status=201 ms=46
+2026-11-19T19:09:36.304Z [p04-reintento-9] REQ method=POST path=/pedidos status=201 ms=46
+2026-11-19T19:09:36.516Z [p04-reintento-10] REQ method=POST path=/pedidos status=201 ms=50
+
+Análisis: la consulta del producto (GET) se atendió siempre en productos-1: cuando el LoadBalancer eligió la instancia caída, el reintento la repitió en la otra (p04-reintento-6, 4,65 s). Los 503 corresponden al descuento de stock (PATCH), que no se reintenta para no descontar dos veces: el cliente debe reintentar el pedido.

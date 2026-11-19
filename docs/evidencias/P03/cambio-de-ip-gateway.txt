@@ -1,0 +1,30 @@
+# Gateway tras un cambio de IP de una instancia de servicio-productos (caché DNS de 5 s)
+# Ejecutado: 2026-11-19 19:15:46 UTC
+# Para forzar el cambio de IP, un contenedor auxiliar ocupa la IP de servicio-productos-1 mientras está detenida.
+
+IP de servicio-productos-1 en red_app antes: 172.18.0.4
+Solicitud previa (el Gateway resuelve y guarda la IP): GET -> 200 productos-1 / 200 productos-2
+
+19:15:48 docker compose stop servicio-productos-1
+19:15:53 contenedor auxiliar 'ocupa-ip' con la IP 172.18.0.4 (no escucha en el 8081)
+19:15:57 docker compose start servicio-productos-1 -> nueva IP: 172.18.0.7
+El DNS de Docker ya resuelve el nombre a la nueva IP: 172.18.0.7      servicio-productos-1
+19:16:16 productos-1 figura UP en Eureka
+
+Solicitudes por el Gateway (POST no se reintenta: si fuera a la IP vieja respondería 500):
+  19:16:24 POST /api/productos -> 201 productos-1
+  19:16:24 POST /api/productos -> 201 productos-2
+  19:16:25 POST /api/productos -> 201 productos-1
+  19:16:25 POST /api/productos -> 201 productos-2
+  19:16:25 POST /api/productos -> 201 productos-1
+  19:16:25 POST /api/productos -> 201 productos-2
+
+Log del Gateway:
+  GW method=POST path=/api/productos route=servicio-productos target=servicio-productos-1:8081 instanceId=productos-1 status=201 ms=220
+  GW method=POST path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=productos-2 status=201 ms=143
+  GW method=POST path=/api/productos route=servicio-productos target=servicio-productos-1:8081 instanceId=productos-1 status=201 ms=25
+  GW method=POST path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=productos-2 status=201 ms=22
+  GW method=POST path=/api/productos route=servicio-productos target=servicio-productos-1:8081 instanceId=productos-1 status=201 ms=22
+  GW method=POST path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=productos-2 status=201 ms=22
+
+Comparación: sin este ajuste (re-ejecución de P04 del 2026-11-19, 19:10 UTC), después de detener e iniciar las dos instancias de productos Docker les intercambió las IP (productos-1 172.18.0.3 -> .4, productos-2 .4 -> .3). El DNS ya devolvía las IP nuevas, pero el Gateway siguió conectando a las viejas: GET y POST /api/productos respondieron 500 (Connection refused) en todas las solicitudes hasta reiniciar el Gateway.

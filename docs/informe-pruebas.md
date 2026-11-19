@@ -10,14 +10,14 @@ Responsable de cada escenario indicado entre paréntesis.
 |---|---|---|---|
 | [P01 · Descubrimiento dinámico](#p01--descubrimiento-dinámico-integrante-1) | Integrante 1 | 4 instancias `UP` en Eureka, rutas `lb://` y solicitudes `200` por nombre lógico | [P01](evidencias/P01/) |
 | [P02 · Balanceo HTTP](#p02--balanceo-http-integrante-1) | Integrante 1 | 100 de 100 solicitudes exitosas, repartidas 47 / 53 (300 solicitudes: 149 / 151) | [P02](evidencias/P02/) |
-| [P03 · Fallo de instancia](#p03--fallo-de-instancia-integrante-1) | Integrante 1 | Con `kill`: 8 a 11 errores `500` de ~130 solicitudes en los ~27 s siguientes y ninguno después; con `stop`: 0 errores. La instancia vuelve en 15 a 21 s | [P03](evidencias/P03/) |
-| [P04 · Comunicación entre servicios](#p04--comunicación-entre-servicios-integrante-3) | Integrante 3 | 16 de 16 comprobaciones: pedido `201`, errores `404`, `409` y `503`, y recuperación | [P04](evidencias/P04/) |
+| [P03 · Fallo de instancia](#p03--fallo-de-instancia-integrante-1) | Integrante 1 | Con `kill`: 8 a 11 errores `500` de ~130 solicitudes en los ~27 s siguientes y ninguno después; con `stop`: 0 errores. La instancia vuelve en 15 a 21 s. Tras un cambio de IP de una instancia, el Gateway la vuelve a alcanzar (caché DNS de 5 s) | [P03](evidencias/P03/) |
+| [P04 · Comunicación entre servicios](#p04--comunicación-entre-servicios-integrante-3) | Integrante 3 | 16 de 16 comprobaciones: pedido `201`, errores `404`, `409` y `503`, y recuperación. Con una instancia caída, la consulta del producto se reintenta en la otra; la cancelación repone el stock una sola vez | [P04](evidencias/P04/) |
 | [P05 · Enrutamiento de base de datos](#p05--enrutamiento-de-base-de-datos-integrante-2) | Integrante 2 | 4 de 4 escrituras al primario; 10 lecturas repartidas 5 y 5 entre las réplicas | [P05](evidencias/P05/) |
 | [P06 · Fallo de réplica](#p06--fallo-de-réplica-postgresql-integrante-2) | Integrante 2 | 30 de 30 lecturas `200` con `replica1` detenida; excluida a los 6 s | [P06](evidencias/P06/) |
-| [P07 · Consistencia de lectura](#p07--consistencia-de-lectura-integrante-2) | Integrante 2 | 20 de 20 lecturas críticas desde el primario; con la réplica pausada, la ordinaria no ve el dato y la crítica sí | [P07](evidencias/P07/) |
-| [P08 · Recuperación de réplica](#p08--recuperación-de-réplica-integrante-2) | Integrante 2 | 5 de 5 pedidos recuperados en `replica1`; reincorporada a la rotación a los 12 s | [P08](evidencias/P08/) |
+| [P07 · Consistencia de lectura](#p07--consistencia-de-lectura-integrante-2) | Integrante 2 | 20 de 20 lecturas críticas (`?consistencia=fuerte`) desde el primario; con la réplica pausada, la lectura ordinaria del mismo pedido da `404` y la crítica `200` | [P07](evidencias/P07/) |
+| [P08 · Recuperación de réplica](#p08--recuperación-de-réplica-integrante-2) | Integrante 2 | 5 de 5 pedidos recuperados en `replica1`; reincorporada con el receptor de WAL activo a los 3 s | [P08](evidencias/P08/) |
 
-Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las limitaciones observadas y las mejoras posibles están al final del informe.
+Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 a P08 se volvieron a ejecutar el 2026-11-19 después de las correcciones de la auditoría de código (reintento del `GET` en otra instancia, reposición de stock al cancelar, lectura ordinaria y crítica de un pedido, réplicas con pool agotado o sin streaming y caché DNS del Gateway). Las limitaciones observadas y las mejoras posibles están al final del informe.
 
 ## P01 · Descubrimiento dinámico (Integrante 1)
 
@@ -121,6 +121,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
   - **`kill` frente a `stop`.** Con `stop` el servicio avisó a Eureka (`Unregistering ... with status DOWN`), el Gateway dejó de enviarle tráfico en ~5 s y no hubo errores; con `kill`, en cambio, hubo 8–11 errores y el Gateway tardó ~30 s. Pero **en el registro de Eureka la instancia detenida con `stop` siguió figurando `DOWN` hasta los +25.4 s** (la retiró la expiración del lease, no una baja inmediata). `docs/arquitectura.md` y el README decían que la parada ordenada se daba de baja de inmediato / en ~10 s; esta prueba lo corrigió: la instancia se **marca `DOWN` de inmediato** (suficiente para que el Gateway la deje de usar) pero **sale del registro a los ~25 s**. No se investigó la causa.
   - **Recuperación.** Al volver a arrancar, la instancia se registró sola: `UP` en Eureka a los 15–21 s del `start` (arranque de Spring Boot y primer latido) y recibiendo tráfico por el Gateway a los 19–28 s (compatible con hasta 5 s de consulta del registro más 5 s de la caché del LoadBalancer); después el reparto volvió a ser ~50/50.
   - **Limitaciones de la prueba.** El generador de carga es un script `bash` que lanza un proceso `curl` por solicitud; en Git Bash sobre Windows eso lo hace más lento que 5 solicitudes/s (se lograron entre ~3.5 y ~5 por segundo: 100 solicitudes en los primeros 20 s en la corrida 1, 69–71 en las otras). Eureka se sondea una vez por segundo, así que sus tiempos tienen ±1 s de resolución. Son tres corridas con `kill` en un solo equipo, sin repetir en otro entorno. El ritmo real de la carga (el script lo imprime al final) y el tiempo que tarda `docker compose kill` en volver dependen de la máquina: aquí tardó entre 1.8 y 3.0 s, pero en una corrida de verificación hecha durante la revisión del PR, en otra ejecución, tardó 11.4 s y Eureka retiró la instancia a +30.8 s desde el lanzamiento del comando. Por eso los tiempos de este informe son una referencia y no un valor fijo.
+  - **Cambio de IP de una instancia (comprobado el 2026-11-19).** Al re-ejecutar P04, que detiene e inicia las dos instancias de productos, Docker les intercambió las IP. El DNS ya devolvía las nuevas, pero el Gateway (Reactor Netty) guardaba las viejas según el TTL del DNS de Docker y respondió `500` a **todas** las solicitudes de productos hasta reiniciarlo. Se corrigió acotando su caché DNS a 5 s (`ResolucionDnsConfig`). Con la corrección, forzando que `servicio-productos-1` vuelva con otra IP (172.18.0.4 → 172.18.0.7), los 6 `POST` siguientes respondieron `201` alternando las dos instancias: [cambio-de-ip-gateway.txt](evidencias/P03/cambio-de-ip-gateway.txt).
 
 ## P04 · Comunicación entre servicios (Integrante 3)
 
@@ -135,23 +136,26 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 
   En cada caso de error comprueba además que no se guardó ningún pedido (`SELECT count(*) FROM pedido`).
 - **Resultado esperado:** el caso correcto responde `201`, descuenta el stock en `servicio-productos` y deja el mismo `X-Request-Id` en los logs de ambos servicios. Los errores responden `404`, `409` y `503` con un mensaje claro y sin crear pedidos. Tras restaurar las instancias, el sistema vuelve a crear pedidos.
-- **Resultado obtenido:** ejecución del 2026-11-19 a las 03:36 UTC; las 16 comprobaciones del script resultaron correctas (`P04 OK`).
+- **Resultado obtenido:** ejecución del 2026-11-19 a las 19:22:45 UTC; las 16 comprobaciones del script resultaron correctas (`P04 OK`).
   - **Descubrimiento:** Eureka listó `api-gateway:gateway-1`, `servicio-pedidos:pedidos-1`, `servicio-productos:productos-1` y `servicio-productos:productos-2`.
-  - **Caso correcto:** `POST /api/pedidos` respondió `201` con total `60.00` (3 × 20.00) y el stock del producto pasó de 10 a 7. El `GET` del pedido respondió `200`. En los logs, `p04-ok-1` aparece en `servicio-pedidos` y en `servicio-productos`: el `GET /productos/6` lo atendió la instancia `productos-2` y el `PATCH /productos/6/stock` la instancia `productos-1`, es decir, el LoadBalancer eligió una instancia distinta para cada llamada.
+  - **Caso correcto:** `POST /api/pedidos` respondió `201` con total `60.00` (3 × 20.00) y el stock del producto pasó de 10 a 7. El `GET` del pedido respondió `200`. En los logs, `p04-ok-1` aparece en `servicio-pedidos` y en `servicio-productos`: el `GET /productos/19` lo atendió `productos-2` y el `PATCH /productos/19/stock` `productos-1`, es decir, el LoadBalancer eligió una instancia distinta para cada llamada.
   - **Producto inexistente:** `404` con `No existe el producto con id 999999`; el número de pedidos no cambió.
-  - **Stock insuficiente:** `409` con `Stock insuficiente para el producto 7 (solicitado: 5)`; no se creó el pedido y el stock siguió en 2.
-  - **`servicio-productos` detenido:** ambas solicitudes respondieron `503`. La inmediata tardó 2,06 s y dijo `sin respuesta (timeout o error de conexión)`; la de 15 s después respondió en 0,03 s con `no hay instancias registradas en Eureka` (Eureka ya tenía 0 instancias). `GET /api/productos` por el Gateway también respondió `503`. `servicio-pedidos` siguió `healthy`.
-  - **Recuperación:** 63 s después del `start` las dos instancias estaban `healthy` y registradas en Eureka, y el siguiente pedido respondió `201` al primer intento.
+  - **Stock insuficiente:** `409` con `Stock insuficiente para el producto 20 (solicitado: 5)`; no se creó el pedido y el stock siguió en 2.
+  - **`servicio-productos` detenido:** ambas solicitudes respondieron `503`. La inmediata tardó 4,04 s y dijo `sin respuesta (timeout o error de conexión)`: el LoadBalancer aún tenía las instancias en caché, y la consulta del producto probó una y, por el reintento, la otra (2 s de timeout de conexión cada una). La de 15 s después respondió en 0,02 s con `no hay instancias registradas en Eureka`. `GET /api/productos` por el Gateway también respondió `503`. `servicio-pedidos` siguió `healthy`.
+  - **Recuperación:** las dos instancias estaban `healthy` 27 s después del `start` y el pedido siguiente respondió `201` al segundo intento.
+  - **Una sola instancia caída** (`docker compose kill servicio-productos-2`, prueba complementaria): de 10 pedidos creados de inmediato, 7 respondieron `201`. La consulta del producto (`GET`) se atendió siempre en `productos-1`; cuando el LoadBalancer eligió la caída, el reintento la repitió en la otra (un pedido tardó 4,65 s). Los 3 `503` fueron del descuento de stock (`PATCH`), que no se reintenta para no descontar dos veces.
+  - **Cancelación con reposición de stock** (prueba complementaria): producto con stock 10, pedido de 4 → stock 6. Dos cancelaciones simultáneas del mismo pedido: una respondió `200` y la otra `409`. El pedido quedó `CANCELADO` y el stock volvió a 10: se repuso una sola vez (`PATCH /productos/18/stock/reponer` con el mismo `X-Request-Id`).
 
   ```
-  p04-ok-1 servicio-productos-2  REQ method=GET   path=/productos/6        status=200
-  p04-ok-1 servicio-productos-1  REQ method=PATCH path=/productos/6/stock  status=200
-  p04-ok-1 servicio-pedidos-1    Pedido 1 creado: productoId=6 cantidad=3 total=60.00
-  p04-ok-1 servicio-pedidos-1    REQ method=POST path=/pedidos status=201
+  p04-ok-1 servicio-productos-2  REQ method=GET   path=/productos/19        status=200
+  p04-ok-1 servicio-productos-1  REQ method=PATCH path=/productos/19/stock  status=200
+  p04-ok-1 servicio-pedidos-1    Pedido 1 creado: productoId=19 cantidad=3 total=60.00
   p04-503  servicio-pedidos-1    No servers available for service: servicio-productos
+  cancelar-2 servicio-productos  REQ method=PATCH path=/productos/18/stock/reponer status=200
+  cancelar-1 servicio-pedidos    REQ method=PATCH path=/pedidos/40/cancelar status=409
   ```
-- **Evidencia:** [salida completa](evidencias/P04/salida.txt) y [trazas de ambos servicios por X-Request-Id](evidencias/P04/trazas.txt).
-- **Análisis:** `servicio-pedidos` no conoce ninguna dirección de `servicio-productos`: su cliente HTTP usa el nombre lógico y Spring Cloud LoadBalancer elige una instancia del registro de Eureka en cada llamada (round-robin, con caché de 5 s). Por eso las dos llamadas de un mismo pedido pueden ir a instancias distintas. El `X-Request-Id` que llega por el Gateway se conserva en `servicio-pedidos`, se reenvía a `servicio-productos` y aparece en cada línea de log de ambos, lo que permite reconstruir la operación completa. Los errores se traducen según su origen: `404` y `409` los decide `servicio-productos` y `servicio-pedidos` los reenvía con el mismo código; `503` lo decide `servicio-pedidos` cuando no consigue hablar con `servicio-productos`. La diferencia de tiempos del `503` muestra la ventana de detección de la caída: inmediatamente después de detener las instancias, el LoadBalancer aún puede conservarlas en su caché (5 s) y la llamada falla tras unos 2 s, coherente con el timeout de conexión configurado (2 s); cuando el registro ya no las tiene, responde al instante. Un `PATCH` de stock no se reintenta, para no descontar dos veces, de modo que el cliente debe reintentar el pedido. El script espera 2 s tras crear un producto porque `GET /productos/{id}` se atiende desde una réplica y una réplica con retraso podría no tenerlo todavía; la descripción de esta limitación está en `docs/api.md`.
+- **Evidencia:** [salida completa](evidencias/P04/salida.txt), [trazas de ambos servicios por X-Request-Id](evidencias/P04/trazas.txt), [pedidos con una instancia caída](evidencias/P04/reintento-una-instancia-caida.txt) y [cancelación con reposición de stock](evidencias/P04/cancelacion-repone-stock.txt).
+- **Análisis:** `servicio-pedidos` no conoce ninguna dirección de `servicio-productos`: su cliente HTTP usa el nombre lógico y Spring Cloud LoadBalancer elige una instancia del registro de Eureka en cada llamada (round-robin, con caché de 5 s). Por eso las dos llamadas de un mismo pedido pueden ir a instancias distintas. El `X-Request-Id` que llega por el Gateway se conserva en `servicio-pedidos`, se reenvía a `servicio-productos` y aparece en cada línea de log de ambos, lo que permite reconstruir la operación completa. Los errores se traducen según su origen: `404` y `409` los decide `servicio-productos` y `servicio-pedidos` los reenvía con el mismo código; `503` lo decide `servicio-pedidos` cuando no consigue hablar con `servicio-productos`. La diferencia de tiempos del `503` muestra la ventana de detección de la caída: inmediatamente después de detener las instancias, el LoadBalancer aún puede conservarlas en su caché (5 s): la consulta del producto prueba una instancia y, por el reintento, la otra, y falla tras unos 4 s (dos timeouts de conexión de 2 s); cuando el registro ya no las tiene, responde al instante. Con una sola instancia caída, ese mismo reintento hace que la consulta no falle. El `PATCH` de stock no se reintenta, para no descontar dos veces, de modo que si cae en la instancia caída el cliente debe reintentar el pedido. El script espera 2 s tras crear un producto porque `GET /productos/{id}` se atiende desde una réplica y una réplica con retraso podría no tenerlo todavía; la descripción de esta limitación está en `docs/api.md`.
 
 ## P05 · Enrutamiento de base de datos (Integrante 2)
 
@@ -163,16 +167,16 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
   4. identifica el nodo de cada solicitud por su `X-Request-Id` en las líneas `DB route` del log de `servicio-pedidos`;
   5. consulta en cada nodo los pedidos creados y las conexiones abiertas del rol `pedidos_app`.
 - **Resultado esperado:** las 4 escrituras en `PRIMARY node=primary tx=read-write`; las 10 lecturas en `REPLICA`, alternando `replica1` y `replica2` (5 y 5); los pedidos presentes en los tres nodos.
-- **Resultado obtenido:** ejecución del 2026-11-18 a las 23:39:49 UTC.
+- **Resultado obtenido:** ejecución del 2026-11-19 a las 19:17:59 UTC.
   - Las 4 escrituras respondieron `201` y las atendió el primario (`DB route=PRIMARY node=primary tx=read-write`).
-  - Las 10 lecturas respondieron `200` en 11-14 ms. Se alternaron en orden: `replica1`, `replica2`, `replica1`... (5 y 5).
+  - Las 10 lecturas respondieron `200` en 16-27 ms. Se alternaron en orden: `replica2`, `replica1`, `replica2`... (5 y 5).
   - Consultas SQL: los 4 pedidos están en `primary`, `replica1` y `replica2`. `pg_is_in_recovery()` es `f` en el primario y `t` en las réplicas. Cada nodo tiene abiertas 5 conexiones de `pedidos_app`: el módulo crea un pool de HikariCP por nodo, con `maximum-pool-size` = 5, y HikariCP las mantiene abiertas porque `minimum-idle` toma ese mismo valor.
 
   ```
   p05-escritura-1 -> DB route=PRIMARY node=primary tx=read-write
-  p05-lectura-1 -> DB route=REPLICA node=replica1 tx=read-only
-  p05-lectura-2 -> DB route=REPLICA node=replica2 tx=read-only
-  p05-lectura-3 -> DB route=REPLICA node=replica1 tx=read-only
+  p05-lectura-1 -> DB route=REPLICA node=replica2 tx=read-only
+  p05-lectura-2 -> DB route=REPLICA node=replica1 tx=read-only
+  p05-lectura-3 -> DB route=REPLICA node=replica2 tx=read-only
   ...
   Escrituras atendidas por el primario: 4 de 4
   Lecturas ordinarias: replica1=5 replica2=5 (total 10)
@@ -191,16 +195,15 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 
   Deja `replica1` detenida para P08.
 - **Resultado esperado:** ninguna lectura falla; tras la caída, todas las lecturas van a `replica2`; el módulo registra la exclusión de `replica1`.
-- **Resultado obtenido:** ejecución del 2026-11-18 a las 23:40:11 UTC.
-  - `replica1` quedó `Exited (0)` a las 23:40:14.
+- **Resultado obtenido:** ejecución del 2026-11-19 a las 19:10:08 UTC.
+  - `docker compose stop replica1` a las 19:10:12; `replica1` quedó `Exited (0)`.
   - Las **30 lecturas respondieron `200`, sin errores**, y todas las atendió `replica2`.
-  - La primera lectura a la que le tocaba `replica1` (`p06-durante-2`) tardó 3,0 s, el `connection-timeout` del pool. En ese momento el módulo excluyó la réplica y atendió la lectura en `replica2`. Las demás tardaron 10-39 ms.
+  - La primera lectura a la que le tocaba `replica1` (`p06-durante-2`) tardó 3,0 s, el `connection-timeout` del pool. En ese momento el módulo excluyó la réplica y atendió la lectura en `replica2`. Las demás tardaron 14-54 ms.
   - El primario y `replica2` siguieron respondiendo consultas SQL. `pg_stat_replication` solo mostró `replica2` y el slot `replica1` quedó `active = f`.
 
   ```
-  23:40:13 docker compose stop replica1
-  23:40:18 DB health node=replica1 verificación fallida 1/2: sin conexión: PSQLException: This connection has been closed.
-  23:40:19 DB health node=replica1 estado=DOWN motivo="fallo al obtener conexión: UnknownHostException: replica1" -> excluida de la rotación; rotación=[replica2]
+  19:10:12 docker compose stop replica1
+  19:10:18 DB health node=replica1 estado=DOWN motivo="fallo al obtener conexión: PSQLException: This connection has been closed." -> excluida de la rotación; rotación=[replica2]
   Lecturas con replica1 detenida: 30 correctas, 0 con error; atendidas por replica1: 0
   ```
 - **Evidencia:** [salida completa](evidencias/P06/salida.txt) y [log de enrutamiento](evidencias/P06/logs-servicio-pedidos.txt).
@@ -219,21 +222,19 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 
   Se ejecutó después de P06, con `replica1` detenida, así que el replay se pausó solo en `replica2`.
 - **Resultado esperado:** la lectura crítica encuentra el pedido las 20 veces y la atiende el primario (`read=critical`). En el contraste, la lectura ordinaria no ve el pedido hasta que la réplica aplica el WAL; la crítica sí lo ve.
-- **Resultado obtenido:** ejecución del 2026-11-18 a las 23:41:17 UTC.
-
-  > **Pendiente de actualizar:** esta ejecución es de la versión anterior, en la que `GET /api/pedidos/{id}` era siempre crítica y el contraste usaba el listado `GET /api/pedidos`. Hay que volver a ejecutar `scripts/p07-consistencia.sh` y reemplazar estos resultados.
-
+- **Resultado obtenido:** ejecución del 2026-11-19 a las 19:16:36 UTC.
   - **Lecturas críticas:** 20 de 20 respondieron `200` con el pedido recién creado. Las 20 las atendió `DB route=PRIMARY node=primary tx=read-only read=critical`.
-  - **Contraste con `replica2` pausada:** el pedido 50 se creó a las 23:41:58.
-    - La lectura crítica lo devolvió (`200`, en el primario).
-    - La lectura ordinaria, atendida por `replica2`, **no lo incluía**. Por SQL, el primario tenía el pedido (`count = 1`) y `replica2` no (`count = 0`).
-    - Al reanudar el replay, la misma lectura ordinaria ya lo incluía.
+  - **Contraste con `replica2` pausada:** el pedido 30 se creó a las 19:17:23.
+    - La lectura crítica (`?consistencia=fuerte`) lo devolvió (`200`, en el primario).
+    - La lectura ordinaria del mismo pedido, atendida por `replica2`, respondió **`404`**. Por SQL, el primario tenía el pedido (`count = 1`) y `replica2` no (`count = 0`).
+    - Al reanudar el replay, la misma lectura ordinaria respondió `200`.
 
   ```
   p07-crear-1 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-1 -> DB route=PRIMARY node=primary tx=read-only read=critical
-  23:41:58 GET /api/pedidos/50 (crítica) [p07-contraste-critica] -> 200
-  23:41:58 GET /api/pedidos (ordinaria) [p07-contraste-ordinaria] -> 200, incluye el pedido 50: no
-  23:42:01 GET /api/pedidos (ordinaria) [p07-contraste-despues] -> 200, incluye el pedido 50: si
+  19:17:23 GET /api/pedidos/30?consistencia=fuerte (crítica) [p07-contraste-critica] -> 200
+  19:17:23 GET /api/pedidos/30 (ordinaria) [p07-contraste-ordinaria] -> 404, encuentra el pedido: no
+  19:17:26 GET /api/pedidos/30 (ordinaria) [p07-contraste-despues] -> 200, encuentra el pedido: si
+  p07-contraste-ordinaria -> DB route=REPLICA node=replica2 tx=read-only
   ```
 - **Evidencia:** [salida completa](evidencias/P07/salida.txt) y [log de enrutamiento](evidencias/P07/logs-servicio-pedidos.txt).
 - **Análisis:** la replicación es asíncrona, así que una réplica puede no tener todavía un dato recién escrito; el contraste lo muestra. **Política aplicada:**
@@ -251,25 +252,25 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
   3. consulta `pg_stat_replication`, `pg_replication_slots` y, en `replica1`, el estado del receptor de WAL y los 5 pedidos;
   4. hace 10 lecturas más y extrae los registros `DB health`.
 - **Resultado esperado:** `replica1` recibe por streaming el WAL que se generó mientras estaba detenida (incluidos los 5 pedidos). El módulo la reincorpora solo cuando responde, está en recuperación y su retraso es aceptable. Después vuelve a recibir lecturas, alternándose con `replica2`.
-- **Resultado obtenido:** ejecución del 2026-11-18 a las 23:42:07 UTC.
-  - Con `replica1` detenida se crearon los pedidos 51-55. Su slot estaba `active = f`, `wal_status = reserved`, con 22 kB de WAL retenido.
-  - `docker compose start replica1` a las 23:42:11.
-  - A las 23:42:23, **12 s después**, el módulo registró `estado=UP recovery=true lag=0.0s -> reincorporada a la rotación`. Hasta entonces, las lecturas las atendió `replica2`.
-  - `replica1` atendió de nuevo una lectura a los 16 s.
+- **Resultado obtenido:** ejecución del 2026-11-19 a las 19:17:33 UTC.
+  - Con `replica1` detenida se crearon los pedidos 31-35. Su slot estaba `active = f`, `wal_status = reserved`, con 13 kB de WAL retenido.
+  - `docker compose start replica1` a las 19:17:37.
+  - A las 19:17:40, **3 s después**, el módulo registró `estado=UP recovery=true lag=0.0s wal=streaming -> reincorporada a la rotación`: la réplica respondía, seguía en recuperación, sin retraso y con el receptor de WAL conectado. Hasta entonces, las lecturas las atendió `replica2`.
+  - `replica1` atendió de nuevo una lectura a los 6 s.
   - `pg_stat_replication` mostró las dos réplicas en `streaming`, con `replay_lsn` igual a `sent_lsn`. Los dos slots quedaron `active = t` sin WAL retenido.
   - En `replica1`: `pg_is_in_recovery() = t`, receptor de WAL en `streaming` y **los 5 pedidos presentes**.
   - Las 10 lecturas posteriores se repartieron 5 y 5.
 
   ```
-  23:42:11 docker compose start replica1
-  23:42:23 DB health node=replica1 estado=UP recovery=true lag=0.0s -> reincorporada a la rotación; rotación=[replica1, replica2]
+  19:17:37 docker compose start replica1
+  19:17:40 DB health node=replica1 estado=UP recovery=true lag=0.0s wal=streaming -> reincorporada a la rotación; rotación=[replica1, replica2]
    application_name |   state   | sent_lsn  | replay_lsn
-   replica1         | streaming | 0/6E1A198 | 0/6E1A198
-   replica2         | streaming | 0/6E1A198 | 0/6E1A198
+   replica1         | streaming | 0/60C8C10 | 0/60C8C10
+   replica2         | streaming | 0/60C8C10 | 0/60C8C10
   Pedidos creados con replica1 caída presentes en replica1: 5 de 5
   ```
 - **Evidencia:** [salida completa](evidencias/P08/salida.txt) y [log de enrutamiento](evidencias/P08/logs-servicio-pedidos.txt).
-- **Análisis:** la réplica se pone al día sola gracias a su slot de replicación. El primario conserva exactamente el WAL que la réplica no confirmó, y al volver lo recibe por streaming. La reincorporación es responsabilidad del módulo, no de Docker: `ReplicaHealthMonitor` solo devuelve la réplica a la rotación tras una verificación apta (conexión, `pg_is_in_recovery() = true` y retraso bajo `max-lag`). Por eso no recibe lecturas mientras arranca. Los 12 s se explican así: el arranque de PostgreSQL, el intervalo de verificación de 5 s y la caché de DNS de Docker. Al volver, el nombre `replica1` se resuelve de nuevo cuando el contenedor tiene red.
+- **Análisis:** la réplica se pone al día sola gracias a su slot de replicación. El primario conserva exactamente el WAL que la réplica no confirmó, y al volver lo recibe por streaming. La reincorporación es responsabilidad del módulo, no de Docker: `ReplicaHealthMonitor` solo devuelve la réplica a la rotación tras una verificación apta (conexión, `pg_is_in_recovery() = true`, retraso bajo `max-lag` y receptor de WAL activo). Por eso no recibe lecturas mientras arranca. El tiempo hasta la reincorporación depende del arranque de PostgreSQL y del intervalo de verificación de 5 s: fue de 3 s en esta ejecución y de 12 s en una anterior.
 
 ## Limitaciones observadas
 
@@ -289,7 +290,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 - **Sin transacciones distribuidas:** `servicio-pedidos` descuenta el stock en `servicio-productos` antes de guardar el pedido en su propia base. Si el guardado falla después de descontar, el stock queda descontado sin pedido (se registra un `ERROR` y la corrección es manual). Si el `PATCH` de stock agota el tiempo, el resultado es incierto: `servicio-productos` pudo descontar y `servicio-pedidos` responde `503` sin crear el pedido. P04 no provocó estos fallos; el comportamiento esperado está en [docs/api.md](api.md#limitación-sin-transacciones-distribuidas).
 - **Cancelar con `servicio-productos` caído:** cancelar un pedido repone su stock con una llamada a `servicio-productos`. Si no responde, el pedido vuelve a `CREADO` y se responde `503`. Si la llamada agota el tiempo después de reponer, un reintento de la cancelación podría reponer dos veces (ver [docs/api.md](api.md#limitación-sin-transacciones-distribuidas)).
 - **Verificación previa con datos atrasados:** `servicio-pedidos` consulta el producto con un `GET` que atiende una réplica. Si está atrasada, podría rechazar un pedido que sí tenía stock, o no ver un producto recién creado (por eso el script de P04 espera 2 s tras crearlo). El `PATCH` de stock va al primario y es la validación definitiva, así que no se vende más de lo que hay.
-- **`503` lento al principio:** justo después de detener `servicio-productos`, el LoadBalancer aún conserva sus instancias y la respuesta tarda ~2 s (2,06 s en P04); cuando el registro ya no las tiene, responde al instante. El `PATCH` de stock no se reintenta, así que el cliente debe reintentar el pedido.
+- **`503` lento al principio:** justo después de detener `servicio-productos`, el LoadBalancer aún conserva sus instancias y la consulta del producto prueba las dos instancias (la segunda por el reintento) y la respuesta tarda ~4 s (4,04 s en P04); cuando el registro ya no las tiene, responde al instante. Con una sola instancia caída, el reintento evita el error en la consulta, pero el `PATCH` de stock no se reintenta: si cae en la instancia caída, el cliente debe reintentar el pedido.
 
 ### Generales
 
@@ -304,7 +305,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
   - Con mucha actividad o una caída larga, el WAL crece en el disco del primario. Por eso se limita con `max_slot_wal_keep_size = 1GB`.
   - Si una réplica supera ese tope, su slot pasa a `lost` y hay que reconstruirla (ver [arquitectura](arquitectura.md#retención-de-wal-slots-de-replicación)).
 - **Primera lectura tras una caída:** la lectura a la que le toca la réplica caída puede esperar hasta el `connection-timeout` del pool (3 s en P06) antes de excluirla. No falla, pero tarda.
-- **Ventana de detección:** entre la caída y la exclusión pasan unos segundos (6 s en P06). Una réplica que vuelve tarda unos 12 s en reincorporarse (P08).
+- **Ventana de detección:** entre la caída y la exclusión pasan unos segundos (6 s en P06). Una réplica que vuelve tarda entre 3 y 12 s en reincorporarse (P08).
 - **Lecturas ordinarias con datos atrasados:** una lectura ordinaria puede no ver una escritura reciente (contraste de P07). El retraso aceptado está acotado por `max-lag` (10 s). Las lecturas que no lo toleran deben ser críticas.
 - **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde el streaming, su retraso medido no crece. El módulo lo detecta consultando si tiene un receptor de WAL activo (`pg_stat_wal_receiver`) y la excluye cuando otra réplica sí recibe WAL. Si ninguna lo recibe (primario caído), las mantiene en la rotación con datos posiblemente atrasados, para no dejar sin lecturas al servicio, y lo avisa en el log.
 - **Sin failover:** si cae el primario, las escrituras y las lecturas críticas fallan. No hay promoción automática de una réplica (el enunciado no la exige).

@@ -1,32 +1,32 @@
 # P05 · Enrutamiento de base de datos
-# Ejecutado: 2026-11-18 23:39:49 UTC
+# Ejecutado: 2026-11-19 19:17:59 UTC
 
 ## 1. Estado inicial
 
 $ docker compose ps -a primary replica1 replica2 servicio-pedidos
 SERVICE            STATUS
-primary            Up 2 hours (healthy)
-replica1           Up 19 seconds (healthy)
-replica2           Up 2 hours (healthy)
-servicio-pedidos   Up 10 minutes (healthy)
+primary            Up 11 minutes (healthy)
+replica1           Up 21 seconds (healthy)
+replica2           Up 11 minutes (healthy)
+servicio-pedidos   Up 11 minutes (healthy)
 
 Rol de cada nodo (el primario no está en recuperación; las réplicas sí):
 $ [primary/pedidos_db] SELECT 'primary' AS nodo, pg_is_in_recovery() AS en_recuperacion, pg_postmaster_start_time() AS iniciado
   nodo   | en_recuperacion |           iniciado            
 ---------+-----------------+-------------------------------
- primary | f               | 2026-11-18 21:52:41.734677+00
+ primary | f               | 2026-11-19 19:06:13.741324+00
 (1 row)
 
 $ [replica1/pedidos_db] SELECT 'replica1' AS nodo, pg_is_in_recovery() AS en_recuperacion, pg_postmaster_start_time() AS iniciado
    nodo   | en_recuperacion |           iniciado            
 ----------+-----------------+-------------------------------
- replica1 | t               | 2026-11-18 23:39:30.818849+00
+ replica1 | t               | 2026-11-19 19:17:38.529747+00
 (1 row)
 
 $ [replica2/pedidos_db] SELECT 'replica2' AS nodo, pg_is_in_recovery() AS en_recuperacion, pg_postmaster_start_time() AS iniciado
    nodo   | en_recuperacion |           iniciado            
 ----------+-----------------+-------------------------------
- replica2 | t               | 2026-11-18 21:52:45.962159+00
+ replica2 | t               | 2026-11-19 19:06:17.861341+00
 (1 row)
 
 $ [primary/postgres] SELECT application_name, state, sync_state FROM pg_stat_replication ORDER BY application_name
@@ -39,24 +39,24 @@ $ [primary/postgres] SELECT application_name, state, sync_state FROM pg_stat_rep
 
 ## 2. Escrituras: 4 pedidos (POST /api/pedidos por el Gateway)
 
-POST /api/productos -> 201 0.017652s, productoId=10
-23:39:52 POST /api/pedidos [p05-escritura-1] -> 201 0.039150s, pedidoId=26
-23:39:52 POST /api/pedidos [p05-escritura-2] -> 201 0.034367s, pedidoId=27
-23:39:52 POST /api/pedidos [p05-escritura-3] -> 201 0.043521s, pedidoId=28
-23:39:52 POST /api/pedidos [p05-escritura-4] -> 201 0.031170s, pedidoId=29
+POST /api/productos -> 201 0.028240s, productoId=16
+19:18:03 POST /api/pedidos [p05-escritura-1] -> 201 0.056834s, pedidoId=36
+19:18:04 POST /api/pedidos [p05-escritura-2] -> 201 0.042587s, pedidoId=37
+19:18:04 POST /api/pedidos [p05-escritura-3] -> 201 0.042420s, pedidoId=38
+19:18:04 POST /api/pedidos [p05-escritura-4] -> 201 0.045386s, pedidoId=39
 
 ## 3. Lecturas ordinarias: 10 × GET /api/pedidos
 
-23:39:54 GET /api/pedidos [p05-lectura-1] -> 200 0.011818s, pedidos=29
-23:39:54 GET /api/pedidos [p05-lectura-2] -> 200 0.012454s, pedidos=29
-23:39:54 GET /api/pedidos [p05-lectura-3] -> 200 0.011499s, pedidos=29
-23:39:54 GET /api/pedidos [p05-lectura-4] -> 200 0.013544s, pedidos=29
-23:39:54 GET /api/pedidos [p05-lectura-5] -> 200 0.011209s, pedidos=29
-23:39:54 GET /api/pedidos [p05-lectura-6] -> 200 0.012140s, pedidos=29
-23:39:54 GET /api/pedidos [p05-lectura-7] -> 200 0.011993s, pedidos=29
-23:39:55 GET /api/pedidos [p05-lectura-8] -> 200 0.011950s, pedidos=29
-23:39:55 GET /api/pedidos [p05-lectura-9] -> 200 0.011477s, pedidos=29
-23:39:55 GET /api/pedidos [p05-lectura-10] -> 200 0.011132s, pedidos=29
+19:18:05 GET /api/pedidos [p05-lectura-1] -> 200 0.015885s, pedidos=39
+19:18:06 GET /api/pedidos [p05-lectura-2] -> 200 0.017572s, pedidos=39
+19:18:06 GET /api/pedidos [p05-lectura-3] -> 200 0.022698s, pedidos=39
+19:18:06 GET /api/pedidos [p05-lectura-4] -> 200 0.017486s, pedidos=39
+19:18:06 GET /api/pedidos [p05-lectura-5] -> 200 0.017210s, pedidos=39
+19:18:07 GET /api/pedidos [p05-lectura-6] -> 200 0.019716s, pedidos=39
+19:18:07 GET /api/pedidos [p05-lectura-7] -> 200 0.017668s, pedidos=39
+19:18:07 GET /api/pedidos [p05-lectura-8] -> 200 0.015970s, pedidos=39
+19:18:07 GET /api/pedidos [p05-lectura-9] -> 200 0.018141s, pedidos=39
+19:18:08 GET /api/pedidos [p05-lectura-10] -> 200 0.026912s, pedidos=39
 
 ## 4. Nodo que atendió cada solicitud (log DB route de servicio-pedidos, por X-Request-Id)
 
@@ -78,19 +78,19 @@ p05-lectura-10 -> DB route=REPLICA node=replica1 tx=read-only
 ## 5. Consultas SQL en cada nodo
 
 Los 4 pedidos nuevos están en los tres nodos (replicados desde el primario):
-$ [primary/pedidos_db] SELECT 'primary' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 10
+$ [primary/pedidos_db] SELECT 'primary' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 16
   nodo   | pedidos_de_p05 
 ---------+----------------
  primary |              4
 (1 row)
 
-$ [replica1/pedidos_db] SELECT 'replica1' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 10
+$ [replica1/pedidos_db] SELECT 'replica1' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 16
    nodo   | pedidos_de_p05 
 ----------+----------------
  replica1 |              4
 (1 row)
 
-$ [replica2/pedidos_db] SELECT 'replica2' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 10
+$ [replica2/pedidos_db] SELECT 'replica2' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 16
    nodo   | pedidos_de_p05 
 ----------+----------------
  replica2 |              4
@@ -115,7 +115,7 @@ $ [replica2/postgres] SELECT 'replica2' AS nodo, count(*) AS conexiones FROM pg_
  replica2 |          5
 (1 row)
 
-Logs de enrutamiento guardados en docs/evidencias/P05/logs-servicio-pedidos.txt (26 líneas)
+Logs de enrutamiento guardados en docs/evidencias/P05/logs-servicio-pedidos.txt (28 líneas)
 
 ## Resultado
 

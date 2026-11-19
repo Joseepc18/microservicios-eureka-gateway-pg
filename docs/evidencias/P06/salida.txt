@@ -1,14 +1,14 @@
 # P06 · Fallo de réplica PostgreSQL
-# Ejecutado: 2026-11-18 23:40:11 UTC
+# Ejecutado: 2026-11-19 19:10:08 UTC
 
 ## 1. Estado inicial
 
 $ docker compose ps -a primary replica1 replica2 servicio-pedidos
 SERVICE            STATUS
-primary            Up 2 hours (healthy)
-replica1           Up 41 seconds (healthy)
-replica2           Up 2 hours (healthy)
-servicio-pedidos   Up 10 minutes (healthy)
+primary            Up 4 minutes (healthy)
+replica1           Up 3 minutes (healthy)
+replica2           Up 3 minutes (healthy)
+servicio-pedidos   Up 3 minutes (healthy)
 $ [primary/postgres] SELECT application_name, state FROM pg_stat_replication ORDER BY application_name
  application_name |   state   
 ------------------+-----------
@@ -17,56 +17,56 @@ $ [primary/postgres] SELECT application_name, state FROM pg_stat_replication ORD
 (2 rows)
 
 Lecturas antes del fallo:
-23:40:13 GET /api/pedidos [p06-antes-1] -> 200 0.034294s
-23:40:13 GET /api/pedidos [p06-antes-2] -> 200 0.014956s
-23:40:13 GET /api/pedidos [p06-antes-3] -> 200 0.012960s
-23:40:13 GET /api/pedidos [p06-antes-4] -> 200 0.013993s
+19:10:11 GET /api/pedidos [p06-antes-1] -> 200 0.164391s
+19:10:11 GET /api/pedidos [p06-antes-2] -> 200 0.024802s
+19:10:11 GET /api/pedidos [p06-antes-3] -> 200 0.021610s
+19:10:12 GET /api/pedidos [p06-antes-4] -> 200 0.022305s
 
 ## 2. Fallo: docker compose stop replica1
 
-23:40:13 docker compose stop replica1
+19:10:12 docker compose stop replica1
  Container microservicios-eureka-gateway-pg-replica1-1 Stopping 
  Container microservicios-eureka-gateway-pg-replica1-1 Stopped 
-23:40:14 replica1 detenida
+19:10:13 replica1 detenida
 $ docker compose ps -a primary replica1 replica2 servicio-pedidos
 SERVICE            STATUS
-primary            Up 2 hours (healthy)
-replica1           Exited (0) Less than a second ago
-replica2           Up 2 hours (healthy)
-servicio-pedidos   Up 10 minutes (healthy)
+primary            Up 4 minutes (healthy)
+replica1           Exited (0) 1 second ago
+replica2           Up 3 minutes (healthy)
+servicio-pedidos   Up 3 minutes (healthy)
 
 ## 3. Lecturas con la réplica detenida: 30 × GET /api/pedidos, una por segundo
 
-23:40:15 GET /api/pedidos [p06-durante-1] -> 200 0.036620s
-23:40:19 GET /api/pedidos [p06-durante-2] -> 200 3.013269s
-23:40:20 GET /api/pedidos [p06-durante-3] -> 200 0.010727s
-23:40:21 GET /api/pedidos [p06-durante-4] -> 200 0.011120s
-23:40:22 GET /api/pedidos [p06-durante-5] -> 200 0.013187s
-23:40:23 GET /api/pedidos [p06-durante-6] -> 200 0.010441s
-23:40:25 GET /api/pedidos [p06-durante-7] -> 200 0.011031s
-23:40:26 GET /api/pedidos [p06-durante-8] -> 200 0.013536s
-23:40:27 GET /api/pedidos [p06-durante-9] -> 200 0.027626s
-23:40:28 GET /api/pedidos [p06-durante-10] -> 200 0.011083s
-23:40:29 GET /api/pedidos [p06-durante-11] -> 200 0.010718s
-23:40:30 GET /api/pedidos [p06-durante-12] -> 200 0.010682s
-23:40:31 GET /api/pedidos [p06-durante-13] -> 200 0.013435s
-23:40:32 GET /api/pedidos [p06-durante-14] -> 200 0.025340s
-23:40:34 GET /api/pedidos [p06-durante-15] -> 200 0.013191s
-23:40:35 GET /api/pedidos [p06-durante-16] -> 200 0.010783s
-23:40:36 GET /api/pedidos [p06-durante-17] -> 200 0.025048s
-23:40:37 GET /api/pedidos [p06-durante-18] -> 200 0.010551s
-23:40:38 GET /api/pedidos [p06-durante-19] -> 200 0.011132s
-23:40:39 GET /api/pedidos [p06-durante-20] -> 200 0.010328s
-23:40:40 GET /api/pedidos [p06-durante-21] -> 200 0.010264s
-23:40:41 GET /api/pedidos [p06-durante-22] -> 200 0.012599s
-23:40:43 GET /api/pedidos [p06-durante-23] -> 200 0.038515s
-23:40:44 GET /api/pedidos [p06-durante-24] -> 200 0.010294s
-23:40:45 GET /api/pedidos [p06-durante-25] -> 200 0.010368s
-23:40:46 GET /api/pedidos [p06-durante-26] -> 200 0.010041s
-23:40:47 GET /api/pedidos [p06-durante-27] -> 200 0.010532s
-23:40:48 GET /api/pedidos [p06-durante-28] -> 200 0.010552s
-23:40:49 GET /api/pedidos [p06-durante-29] -> 200 0.020504s
-23:40:50 GET /api/pedidos [p06-durante-30] -> 200 0.009743s
+19:10:14 GET /api/pedidos [p06-durante-1] -> 200 0.022624s
+19:10:18 GET /api/pedidos [p06-durante-2] -> 200 3.036583s
+19:10:20 GET /api/pedidos [p06-durante-3] -> 200 0.015827s
+19:10:21 GET /api/pedidos [p06-durante-4] -> 200 0.017856s
+19:10:22 GET /api/pedidos [p06-durante-5] -> 200 0.019211s
+19:10:23 GET /api/pedidos [p06-durante-6] -> 200 0.022260s
+19:10:24 GET /api/pedidos [p06-durante-7] -> 200 0.018231s
+19:10:26 GET /api/pedidos [p06-durante-8] -> 200 0.037961s
+19:10:27 GET /api/pedidos [p06-durante-9] -> 200 0.022845s
+19:10:28 GET /api/pedidos [p06-durante-10] -> 200 0.044314s
+19:10:29 GET /api/pedidos [p06-durante-11] -> 200 0.016013s
+19:10:31 GET /api/pedidos [p06-durante-12] -> 200 0.020435s
+19:10:32 GET /api/pedidos [p06-durante-13] -> 200 0.015218s
+19:10:33 GET /api/pedidos [p06-durante-14] -> 200 0.016967s
+19:10:34 GET /api/pedidos [p06-durante-15] -> 200 0.015177s
+19:10:35 GET /api/pedidos [p06-durante-16] -> 200 0.018523s
+19:10:37 GET /api/pedidos [p06-durante-17] -> 200 0.029614s
+19:10:38 GET /api/pedidos [p06-durante-18] -> 200 0.014070s
+19:10:39 GET /api/pedidos [p06-durante-19] -> 200 0.015824s
+19:10:40 GET /api/pedidos [p06-durante-20] -> 200 0.015904s
+19:10:42 GET /api/pedidos [p06-durante-21] -> 200 0.037678s
+19:10:44 GET /api/pedidos [p06-durante-22] -> 200 0.048993s
+19:10:45 GET /api/pedidos [p06-durante-23] -> 200 0.054256s
+19:10:47 GET /api/pedidos [p06-durante-24] -> 200 0.025606s
+19:10:48 GET /api/pedidos [p06-durante-25] -> 200 0.015908s
+19:10:49 GET /api/pedidos [p06-durante-26] -> 200 0.015975s
+19:10:50 GET /api/pedidos [p06-durante-27] -> 200 0.018520s
+19:10:51 GET /api/pedidos [p06-durante-28] -> 200 0.016100s
+19:10:53 GET /api/pedidos [p06-durante-29] -> 200 0.017945s
+19:10:54 GET /api/pedidos [p06-durante-30] -> 200 0.020622s
 
 ## 4. Nodo que atendió cada lectura (log DB route)
 
@@ -107,9 +107,8 @@ p06-durante-30 -> DB route=REPLICA node=replica2 tx=read-only
 
 ## 5. Registros del mecanismo de selección (DB health)
 
-Logs de enrutamiento guardados en docs/evidencias/P06/logs-servicio-pedidos.txt (63 líneas)
-2026-11-18T23:40:18.344Z  INFO [] 1 --- [servicio-pedidos] [ routing-health] e.e.u.d.p.ReplicaHealthMonitor           : DB health node=replica1 verificación fallida 1/2: sin conexión: PSQLException: This connection has been closed.
-2026-11-18T23:40:19.459Z  WARN [p06-durante-2] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.ReplicaPoolDataSource          : DB health node=replica1 estado=DOWN motivo="fallo al obtener conexión: UnknownHostException: replica1" -> excluida de la rotación; rotación=[replica2]
+Logs de enrutamiento guardados en docs/evidencias/P06/logs-servicio-pedidos.txt (66 líneas)
+2026-11-19T19:10:18.809Z  WARN [p06-durante-2] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.ReplicaPoolDataSource          : DB health node=replica1 estado=DOWN motivo="fallo al obtener conexión: PSQLException: This connection has been closed." -> excluida de la rotación; rotación=[replica2]
 
 replica1 excluida de la rotación 6 s después de docker compose stop
 
@@ -118,13 +117,13 @@ replica1 excluida de la rotación 6 s después de docker compose stop
 $ [primary/pedidos_db] SELECT 'primary' AS nodo, pg_is_in_recovery() AS en_recuperacion, count(*) AS pedidos FROM pedido
   nodo   | en_recuperacion | pedidos 
 ---------+-----------------+---------
- primary | f               |      29
+ primary | f               |       9
 (1 row)
 
 $ [replica2/pedidos_db] SELECT 'replica2' AS nodo, pg_is_in_recovery() AS en_recuperacion, count(*) AS pedidos FROM pedido
    nodo   | en_recuperacion | pedidos 
 ----------+-----------------+---------
- replica2 | t               |      29
+ replica2 | t               |       9
 (1 row)
 
 pg_stat_replication en el primario (replica1 ya no aparece):
@@ -147,8 +146,8 @@ $ [primary/postgres] SELECT slot_name, active, wal_status FROM pg_replication_sl
 Lecturas con replica1 detenida: 30 correctas, 0 con error; atendidas por replica1: 0
 $ docker compose ps -a primary replica1 replica2 servicio-pedidos
 SERVICE            STATUS
-primary            Up 2 hours (healthy)
+primary            Up 5 minutes (healthy)
 replica1           Exited (0) About a minute ago
-replica2           Up 2 hours (healthy)
-servicio-pedidos   Up 11 minutes (healthy)
+replica2           Up 5 minutes (healthy)
+servicio-pedidos   Up 5 minutes (healthy)
 P06 OK
