@@ -352,7 +352,7 @@ docker compose restart servicio-pedidos      # reiniciar un servicio
 
 - Con la instancia detenida, el Gateway reparte las solicitudes entre las restantes. Los `GET` que lleguen a la instancia caída se reintentan en otra.
 - Con `docker compose stop`, la instancia avisa a Eureka y la marca `DOWN` a los ~2 s, y el Gateway deja de enviarle tráfico en pocos segundos. Eureka no la retira del registro de inmediato: sigue apareciendo hasta los ~25 s.
-- Si la instancia cae de forma abrupta (sin avisar, por ejemplo `docker compose kill servicio-productos-2`), Eureka la expulsa a los ~24-27 s y el Gateway deja de enviarle solicitudes a los ~30 s (hasta ~35 s en el peor caso). Durante esa ventana hay errores `500` transitorios: en P03, entre 8 y 11 de ~130 solicitudes `GET`, que el reintento del Gateway no siempre rescata, y las escrituras dirigidas a ella pueden fallar. El cliente debe reintentar (ver [docs/arquitectura.md](docs/arquitectura.md#eureka-configuración-y-tiempos-de-detección)).
+- Si la instancia cae de forma abrupta (sin avisar, por ejemplo `docker compose kill servicio-productos-2`), Eureka la expulsa a los ~24-27 s, pero el Gateway deja de enviarle solicitudes en ~2 s gracias al health-check del LoadBalancer, que consulta `/actuator/health` de cada instancia cada 2 s. En P03 no hubo errores con este ajuste (sin él hubo entre 8 y 11 de ~130). Una escritura que caiga en la instancia en esos ~2 s puede fallar, y el cliente debe reintentarla (ver [docs/arquitectura.md](docs/arquitectura.md#eureka-configuración-y-tiempos-de-detección)).
 - Los contenedores no tienen reinicio automático: una instancia caída hay que iniciarla con `docker compose start`.
 - Si `servicio-productos` no tiene ninguna instancia registrada, `servicio-pedidos` responde `503` al crear pedidos.
 
@@ -438,7 +438,7 @@ Ejemplos de todas las operaciones a través del Gateway, con casos de error y ve
 - El Gateway no tiene autenticación y Eureka es un servidor único, sin alta disponibilidad: es un laboratorio, no un despliegue de producción.
 - La replicación es asíncrona: una lectura ordinaria puede no ver una escritura reciente (por eso existen las lecturas críticas).
 - La retención de WAL por slots puede acumular espacio en el primario mientras una réplica está caída (tope: 1 GB).
-- Si una instancia de servicio se cae sin avisar, durante ~25 a 30 s puede haber errores transitorios hasta que Eureka y el Gateway dejan de elegirla (P03).
+- Si una instancia de servicio se cae sin avisar, el Gateway deja de elegirla en ~2 s (health-check); en ese intervalo una escritura dirigida a ella puede fallar (P03). `servicio-pedidos` no usa health-check: en sus llamadas a `servicio-productos` solo reintenta los `GET`.
 
 El detalle y los casos observados están en [docs/arquitectura.md](docs/arquitectura.md), [docs/api.md](docs/api.md#limitación-sin-transacciones-distribuidas) y la sección *Limitaciones observadas* de [docs/informe-pruebas.md](docs/informe-pruebas.md).
 
