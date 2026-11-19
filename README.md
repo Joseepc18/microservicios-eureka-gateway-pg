@@ -37,7 +37,7 @@ Detalles, decisiones y tabla de puertos en [docs/arquitectura.md](docs/arquitect
 .
 ├── database/            Scripts de inicialización del primario y las réplicas
 ├── docs/                Arquitectura, plan de trabajo, informe de pruebas y material de referencia
-├── requests/            Colección de solicitudes HTTP (pendiente)
+├── requests/            Colección de solicitudes HTTP (.http)
 ├── persistence-routing/ Librería compartida de enrutamiento de lecturas y escrituras
 ├── discovery-server/    Eureka Server
 ├── api-gateway/         Spring Cloud Gateway
@@ -180,9 +180,9 @@ scripts/p08-recuperacion.sh    # reinicia replica1: se pone al día y vuelve a l
 
 Usan `curl`, `docker compose` y el `.env` de la raíz. Si las variables están en otro archivo, se indica con `ENV_FILE=/ruta/al/archivo`. Si el Gateway no está en el puerto 8080, se indica con `GATEWAY_PORT`. P07 pausa unos segundos el replay de WAL de las réplicas para mostrar el retraso, y lo reanuda siempre al terminar. Cada ejecución crea un producto y algunos pedidos de prueba.
 
-## Colección de solicitudes *(pendiente)*
+## Colección de solicitudes
 
-Se ubicará en `requests/`.
+Ejemplos de todas las operaciones a través del Gateway, con casos de error y verificación del sistema, en [requests/](requests/README.md). Se usan con VS Code (extensión REST Client) o con IntelliJ. La documentación de cada operación está en [docs/api.md](docs/api.md).
 
 ## Video demostrativo *(pendiente)*
 

@@ -1,0 +1,43 @@
+# servicio-pedidos a través del Gateway. Documentación: docs/api.md.
+# Ejecutar en orden: las solicitudes siguientes usan el pedido creado por "Crear pedido".
+# Crear un pedido llama a servicio-productos (descubierto por Eureka) y descuenta stock del producto 2.
+
+@gateway = http://127.0.0.1:8080
+
+### Crear pedido (total = precio x cantidad; descuenta 4 unidades del producto 2)
+# @name crearPedido
+# Esperado: 201
+POST {{gateway}}/api/pedidos
+Content-Type: application/json
+
+{
+  "productoId": 2,
+  "cantidad": 4
+}
+
+### Obtener el pedido recién creado (lectura crítica: se atiende desde el primario)
+# Esperado: 200
+GET {{gateway}}/api/pedidos/{{crearPedido.response.body.$.id}}
+
+### Listar pedidos
+# Esperado: 200
+GET {{gateway}}/api/pedidos
+
+### Crear pedido con un X-Request-Id propio (queda en los logs de servicio-pedidos y servicio-productos)
+# Esperado: 201
+POST {{gateway}}/api/pedidos
+Content-Type: application/json
+X-Request-Id: prueba-p04-1
+
+{
+  "productoId": 2,
+  "cantidad": 1
+}
+
+### Comprobar el descuento de stock en servicio-productos
+# Esperado: 200
+GET {{gateway}}/api/productos/2
+
+### Cancelar el pedido (no devuelve el stock)
+# Esperado: 200
+PATCH {{gateway}}/api/pedidos/{{crearPedido.response.body.$.id}}/cancelar

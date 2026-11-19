@@ -1,0 +1,30 @@
+# Servicio de productos caído: servicio-pedidos responde 503 con un mensaje claro.
+#
+# Precondición (ejecutar en una terminal antes de enviar la solicitud, y esperar unos 15 segundos
+# a que Eureka retire las instancias del registro):
+#
+#   docker compose stop servicio-productos-1 servicio-productos-2
+#
+# Al terminar, restaurar las instancias (se registran solas en Eureka en unos 20-30 s):
+#
+#   docker compose start servicio-productos-1 servicio-productos-2
+#
+# Con una sola instancia detenida no se produce un 503: el Gateway y servicio-pedidos usan la otra.
+# Durante la ventana de detección (hasta ~35 s tras una caída abrupta) algunas solicitudes pueden
+# fallar de forma transitoria; ver "Eureka: configuración y tiempos de detección" en docs/arquitectura.md.
+
+@gateway = http://127.0.0.1:8080
+
+### Crear un pedido sin instancias de servicio-productos disponibles
+# Esperado: 503
+POST {{gateway}}/api/pedidos
+Content-Type: application/json
+
+{
+  "productoId": 2,
+  "cantidad": 1
+}
+
+### Consultar productos sin instancias disponibles (el Gateway responde 503)
+# Esperado: 503
+GET {{gateway}}/api/productos

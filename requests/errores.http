@@ -1,0 +1,125 @@
+# Casos de error de ambos servicios a través del Gateway. Documentación: docs/api.md.
+# Todos los errores devuelven el mismo cuerpo JSON: timestamp, status, error, message y path.
+# El caso de "servicio caído" (503) está aparte en servicio-caido.http porque requiere detener contenedores.
+
+@gateway = http://127.0.0.1:8080
+
+# ------------------------------------------------------------------ 404
+
+### Producto inexistente
+# Esperado: 404
+GET {{gateway}}/api/productos/99999
+
+### Pedido inexistente
+# Esperado: 404
+GET {{gateway}}/api/pedidos/99999
+
+### Crear un pedido de un producto inexistente (servicio-pedidos recibe el 404 de servicio-productos)
+# Esperado: 404
+POST {{gateway}}/api/pedidos
+Content-Type: application/json
+
+{
+  "productoId": 99999,
+  "cantidad": 1
+}
+
+### Ruta que no existe
+# Esperado: 404
+GET {{gateway}}/api/productos/1/inexistente
+
+# ------------------------------------------------------------------ 409
+
+### Descontar más stock del disponible
+# Esperado: 409
+PATCH {{gateway}}/api/productos/1/stock
+Content-Type: application/json
+
+{
+  "cantidad": 99999
+}
+
+### Crear un pedido sin stock suficiente (no se descuenta nada ni se guarda el pedido)
+# Esperado: 409
+POST {{gateway}}/api/pedidos
+Content-Type: application/json
+
+{
+  "productoId": 1,
+  "cantidad": 99999
+}
+
+### Pedido auxiliar para probar la doble cancelación
+# @name pedidoAuxiliar
+# Esperado: 201
+POST {{gateway}}/api/pedidos
+Content-Type: application/json
+
+{
+  "productoId": 2,
+  "cantidad": 1
+}
+
+### Primera cancelación
+# Esperado: 200
+PATCH {{gateway}}/api/pedidos/{{pedidoAuxiliar.response.body.$.id}}/cancelar
+
+### Cancelar un pedido ya cancelado
+# Esperado: 409
+PATCH {{gateway}}/api/pedidos/{{pedidoAuxiliar.response.body.$.id}}/cancelar
+
+# ------------------------------------------------------------------ 400
+
+### Producto con datos inválidos (nombre vacío, precio y stock negativos)
+# Esperado: 400
+POST {{gateway}}/api/productos
+Content-Type: application/json
+
+{
+  "nombre": "",
+  "precio": -1,
+  "stock": -5
+}
+
+### Descontar stock con una cantidad inválida
+# Esperado: 400
+PATCH {{gateway}}/api/productos/1/stock
+Content-Type: application/json
+
+{
+  "cantidad": 0
+}
+
+### Pedido con datos inválidos
+# Esperado: 400
+POST {{gateway}}/api/pedidos
+Content-Type: application/json
+
+{
+  "productoId": -1,
+  "cantidad": 0
+}
+
+### JSON mal formado
+# Esperado: 400
+POST {{gateway}}/api/productos
+Content-Type: application/json
+
+{ esto no es json
+
+### Identificador no numérico
+# Esperado: 400
+GET {{gateway}}/api/productos/abc
+
+# ------------------------------------------------------------------ 405 y 415
+
+### Método no permitido en esa ruta
+# Esperado: 405
+DELETE {{gateway}}/api/productos
+
+### Content-Type no soportado (el cuerpo debe ser application/json)
+# Esperado: 415
+POST {{gateway}}/api/productos
+Content-Type: text/plain
+
+hola
