@@ -8,18 +8,18 @@ Responsable de cada escenario indicado entre paréntesis.
 
 | Escenario | Responsable | Resultado | Evidencia |
 |---|---|---|---|
-| [P01 · Descubrimiento dinámico](#p01--descubrimiento-dinámico-integrante-1) | Integrante 1 | 4 instancias `UP` en Eureka, rutas `lb://` y solicitudes `200` por nombre lógico | [P01](evidencias/P01/) |
-| [P02 · Balanceo HTTP](#p02--balanceo-http-integrante-1) | Integrante 1 | 100 de 100 solicitudes exitosas, repartidas 47 / 53 (300 solicitudes: 149 / 151) | [P02](evidencias/P02/) |
-| [P03 · Fallo de instancia](#p03--fallo-de-instancia-integrante-1) | Integrante 1 | Con `kill`: 8 a 11 errores `500` de ~130 solicitudes en los ~27 s siguientes y ninguno después; con `stop`: 0 errores. La instancia vuelve en 15 a 21 s. Tras un cambio de IP de una instancia, el Gateway la vuelve a alcanzar (caché DNS de 5 s) | [P03](evidencias/P03/) |
-| [P04 · Comunicación entre servicios](#p04--comunicación-entre-servicios-integrante-3) | Integrante 3 | 16 de 16 comprobaciones: pedido `201`, errores `404`, `409` y `503`, y recuperación. Con una instancia caída, la consulta del producto se reintenta en la otra; la cancelación repone el stock una sola vez | [P04](evidencias/P04/) |
-| [P05 · Enrutamiento de base de datos](#p05--enrutamiento-de-base-de-datos-integrante-2) | Integrante 2 | 4 de 4 escrituras al primario; 10 lecturas repartidas 5 y 5 entre las réplicas | [P05](evidencias/P05/) |
-| [P06 · Fallo de réplica](#p06--fallo-de-réplica-postgresql-integrante-2) | Integrante 2 | 30 de 30 lecturas `200` con `replica1` detenida; excluida a los 6 s | [P06](evidencias/P06/) |
-| [P07 · Consistencia de lectura](#p07--consistencia-de-lectura-integrante-2) | Integrante 2 | 20 de 20 lecturas críticas (`?consistencia=fuerte`) desde el primario; con la réplica pausada, la lectura ordinaria del mismo pedido da `404` y la crítica `200` | [P07](evidencias/P07/) |
-| [P08 · Recuperación de réplica](#p08--recuperación-de-réplica-integrante-2) | Integrante 2 | 5 de 5 pedidos recuperados en `replica1`; reincorporada con el receptor de WAL activo a los 3 s | [P08](evidencias/P08/) |
+| [P01 · Descubrimiento dinámico](#p01--descubrimiento-dinámico-joseepc18) | Joseepc18 | 4 instancias `UP` en Eureka, rutas `lb://` y solicitudes `200` por nombre lógico | [P01](evidencias/P01/) |
+| [P02 · Balanceo HTTP](#p02--balanceo-http-joseepc18) | Joseepc18 | 100 de 100 solicitudes exitosas, repartidas 47 / 53 (300 solicitudes: 149 / 151) | [P02](evidencias/P02/) |
+| [P03 · Fallo de instancia](#p03--fallo-de-instancia-joseepc18) | Joseepc18 | Con `kill`: 8 a 11 errores `500` de ~130 solicitudes en los ~27 s siguientes y ninguno después; con `stop`: 0 errores. La instancia vuelve en 15 a 21 s. Tras un cambio de IP de una instancia, el Gateway la vuelve a alcanzar (caché DNS de 5 s) | [P03](evidencias/P03/) |
+| [P04 · Comunicación entre servicios](#p04--comunicación-entre-servicios-luisanchundia) | LuisAnchundia | 16 de 16 comprobaciones: pedido `201`, errores `404`, `409` y `503`, y recuperación. Con una instancia caída, la consulta del producto se reintenta en la otra; la cancelación repone el stock una sola vez | [P04](evidencias/P04/) |
+| [P05 · Enrutamiento de base de datos](#p05--enrutamiento-de-base-de-datos-dayronqv) | DayronQV | 4 de 4 escrituras al primario; 10 lecturas repartidas 5 y 5 entre las réplicas | [P05](evidencias/P05/) |
+| [P06 · Fallo de réplica](#p06--fallo-de-réplica-postgresql-dayronqv) | DayronQV | 30 de 30 lecturas `200` con `replica1` detenida; excluida a los 6 s | [P06](evidencias/P06/) |
+| [P07 · Consistencia de lectura](#p07--consistencia-de-lectura-dayronqv) | DayronQV | 20 de 20 lecturas críticas (`?consistencia=fuerte`) desde el primario; con la réplica pausada, la lectura ordinaria del mismo pedido da `404` y la crítica `200` | [P07](evidencias/P07/) |
+| [P08 · Recuperación de réplica](#p08--recuperación-de-réplica-dayronqv) | DayronQV | 5 de 5 pedidos recuperados en `replica1`; reincorporada con el receptor de WAL activo a los 3 s | [P08](evidencias/P08/) |
 
 Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 a P08 se volvieron a ejecutar el 2026-11-19 después de las correcciones de la auditoría de código (reintento del `GET` en otra instancia, reposición de stock al cancelar, lectura ordinaria y crítica de un pedido, réplicas con pool agotado o sin streaming y caché DNS del Gateway). Las limitaciones observadas y las mejoras posibles están al final del informe.
 
-## P01 · Descubrimiento dinámico (Integrante 1)
+## P01 · Descubrimiento dinámico (Joseepc18)
 
 - **Objetivo:** verificar que las instancias se registran en Eureka y pueden localizarse por nombre lógico.
 - **Procedimiento:** (sistema levantado desde un checkout limpio con `cp .env.example .env` y `docker compose up -d --build --wait`; todos los contenedores quedaron `healthy`). Los comandos se ejecutaron desde Git Bash en Windows con Docker Desktop, usando `127.0.0.1`.
@@ -45,7 +45,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 
 - **Evidencia:** [`docs/evidencias/P01/`](evidencias/P01/): `01-compose-ps.txt` (contenedores `healthy`), `02-eureka-health.txt`, `03-eureka-apps-json.txt` (respuesta JSON completa de `/eureka/apps`), `04-eureka-instancias.txt` (extracto: una línea por instancia), `05-eureka-dashboard.txt` (líneas del dashboard), `06-gateway-routes.txt`, `07-solicitudes-gateway.txt` (cabeceras y cuerpos de las solicitudes) y `08-gateway-log.txt`. En `01-compose-ps.txt` (y en las salidas de P03 que muestran nombres de contenedor) se normalizó el prefijo del nombre del proyecto de Compose a `microservicios-eureka-gateway-pg-`: durante las pruebas el proyecto se llamaba como la carpeta de trabajo temporal. Es lo único que se cambió respecto a la salida original.
 - **Análisis:** el Gateway nunca usa una dirección fija: las rutas son `lb://nombre-lógico` y es Eureka quien dice qué instancias hay detrás de cada nombre, de modo que ambas instancias de productos respondieron a la misma URL (`/api/productos`) sin que el cliente supiera cuál era cuál. El `instanceId` (`servicio-productos:productos-1/2`) y el header `X-Instance-Id` permiten distinguirlas. Las instancias de productos anuncian en Eureka su nombre de host (`servicio-productos-1/2`) y no su IP: la IP que registra Eureka (172.21.0.x) es de otra subred que la del Gateway (172.22.0.x), así que el Gateway las alcanza por nombre (decisión ya comentada en `docker-compose.yml`). Esta prueba solo cubre el registro y la localización; el reparto de carga se mide en P02.
 
-## P02 · Balanceo HTTP (Integrante 1)
+## P02 · Balanceo HTTP (Joseepc18)
 
 - **Objetivo:** ejecutar al menos 100 solicitudes contra un servicio con dos instancias y registrar qué instancia responde cada una.
 - **Procedimiento:** con el sistema levantado, ejecutar [`scripts/p02-balanceo.sh`](../scripts/p02-balanceo.sh). El script envía `N` solicitudes `GET` al Gateway (una tras otra), lee el header `X-Instance-Id` de cada respuesta y cuenta por instancia y por código HTTP.
@@ -69,7 +69,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 
 - **Evidencia:** [`docs/evidencias/P02/`](evidencias/P02/): `p02-salida-completa.txt` (salida íntegra de la corrida de 100, con una línea por solicitud: número, código, instancia y milisegundos), `p02-300-solicitudes-resumen.txt` (resumen de la corrida de 300) y `p02-gateway-log.txt` (recuento del log del Gateway por destino y estado).
 - **Análisis:** el reparto es el esperado para un round-robin: ~50 % a cada instancia, sin errores. Los pequeños desvíos (47/53 con 100 solicitudes) vienen de las ocasiones en que una misma instancia respondió dos veces seguidas; no se investigó su causa exacta, aunque es compatible con que el LoadBalancer renueve su lista de instancias cada 5 s (`spring.cloud.loadbalancer.cache.ttl`, ver `docs/arquitectura.md`). Con más solicitudes el reparto converge (49.7 / 50.3 %). La latencia por solicitud fue de 12 a 159 ms (casi siempre 20–40 ms); el script tardó unos 0.4 s por solicitud en total porque cada iteración lanza varios procesos (`curl`, `grep`, etc.) en Git Bash sobre Windows: es costo del script, no del servicio.
 
-## P03 · Fallo de instancia (Integrante 1)
+## P03 · Fallo de instancia (Joseepc18)
 
 - **Objetivo:** detener una instancia y comprobar que el sistema continúa atendiendo solicitudes con la otra.
 - **Procedimiento:** con el sistema levantado, ejecutar [`scripts/p03-fallo-instancia.sh`](../scripts/p03-fallo-instancia.sh), que hace lo siguiente en un solo comando:
@@ -123,7 +123,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 
   - **Limitaciones de la prueba.** El generador de carga es un script `bash` que lanza un proceso `curl` por solicitud; en Git Bash sobre Windows eso lo hace más lento que 5 solicitudes/s (se lograron entre ~3.5 y ~5 por segundo: 100 solicitudes en los primeros 20 s en la corrida 1, 69–71 en las otras). Eureka se sondea una vez por segundo, así que sus tiempos tienen ±1 s de resolución. Son tres corridas con `kill` en un solo equipo, sin repetir en otro entorno. El ritmo real de la carga (el script lo imprime al final) y el tiempo que tarda `docker compose kill` en volver dependen de la máquina: aquí tardó entre 1.8 y 3.0 s, pero en una corrida de verificación hecha durante la revisión del PR, en otra ejecución, tardó 11.4 s y Eureka retiró la instancia a +30.8 s desde el lanzamiento del comando. Por eso los tiempos de este informe son una referencia y no un valor fijo.
   - **Cambio de IP de una instancia (comprobado el 2026-11-19).** Al re-ejecutar P04, que detiene e inicia las dos instancias de productos, Docker les intercambió las IP. El DNS ya devolvía las nuevas, pero el Gateway (Reactor Netty) guardaba las viejas según el TTL del DNS de Docker y respondió `500` a **todas** las solicitudes de productos hasta reiniciarlo. Se corrigió acotando su caché DNS a 5 s (`ResolucionDnsConfig`). Con la corrección, forzando que `servicio-productos-1` vuelva con otra IP (172.18.0.4 → 172.18.0.7), los 6 `POST` siguientes respondieron `201` alternando las dos instancias: [cambio-de-ip-gateway.txt](evidencias/P03/cambio-de-ip-gateway.txt).
 
-## P04 · Comunicación entre servicios (Integrante 3)
+## P04 · Comunicación entre servicios (LuisAnchundia)
 
 - **Objetivo:** ejecutar una operación de negocio que requiera una llamada real de un microservicio a otro mediante descubrimiento dinámico.
 - **Procedimiento:** con el sistema completo levantado, ejecutar `scripts/p04-comunicacion.sh`. La operación es crear un pedido: `servicio-pedidos` consulta el producto en `servicio-productos` (`GET /productos/{id}`) y descuenta su stock (`PATCH /productos/{id}/stock`) llamándolo por su nombre lógico de Eureka (`http://servicio-productos`), sin direcciones fijas. El script:
@@ -157,7 +157,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 
 - **Evidencia:** [salida completa](evidencias/P04/salida.txt), [trazas de ambos servicios por X-Request-Id](evidencias/P04/trazas.txt), [pedidos con una instancia caída](evidencias/P04/reintento-una-instancia-caida.txt) y [cancelación con reposición de stock](evidencias/P04/cancelacion-repone-stock.txt).
 - **Análisis:** `servicio-pedidos` no conoce ninguna dirección de `servicio-productos`: su cliente HTTP usa el nombre lógico y Spring Cloud LoadBalancer elige una instancia del registro de Eureka en cada llamada (round-robin, con caché de 5 s). Por eso las dos llamadas de un mismo pedido pueden ir a instancias distintas. El `X-Request-Id` que llega por el Gateway se conserva en `servicio-pedidos`, se reenvía a `servicio-productos` y aparece en cada línea de log de ambos, lo que permite reconstruir la operación completa. Los errores se traducen según su origen: `404` y `409` los decide `servicio-productos` y `servicio-pedidos` los reenvía con el mismo código; `503` lo decide `servicio-pedidos` cuando no consigue hablar con `servicio-productos`. La diferencia de tiempos del `503` muestra la ventana de detección de la caída: inmediatamente después de detener las instancias, el LoadBalancer aún puede conservarlas en su caché (5 s): la consulta del producto prueba una instancia y, por el reintento, la otra, y falla tras unos 4 s (dos timeouts de conexión de 2 s); cuando el registro ya no las tiene, responde al instante. Con una sola instancia caída, ese mismo reintento hace que la consulta no falle. El `PATCH` de stock no se reintenta, para no descontar dos veces, de modo que si cae en la instancia caída el cliente debe reintentar el pedido. El script espera 2 s tras crear un producto porque `GET /productos/{id}` se atiende desde una réplica y una réplica con retraso podría no tenerlo todavía; la descripción de esta limitación está en `docs/api.md`.
 
-## P05 · Enrutamiento de base de datos (Integrante 2)
+## P05 · Enrutamiento de base de datos (DayronQV)
 
 - **Objetivo:** demostrar que las escrituras usan el primario y las consultas ordinarias se distribuyen entre las dos réplicas.
 - **Procedimiento:** con el sistema levantado, ejecutar `scripts/p05-enrutamiento.sh`. El script:
@@ -184,7 +184,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 
 - **Evidencia:** [salida completa](evidencias/P05/salida.txt) y [log de enrutamiento de servicio-pedidos](evidencias/P05/logs-servicio-pedidos.txt).
 - **Análisis:** el servicio no elige el nodo; solo marca sus métodos como `@Transactional` o `@Transactional(readOnly = true)`. La decisión la toma `persistence-routing`: `ReadWriteRoutingDataSource` (un `AbstractRoutingDataSource`) envía las escrituras al primario y las lecturas a `ReplicaPoolDataSource`, que aplica round-robin entre las réplicas disponibles. Cada transacción usa un solo nodo de principio a fin. El log también muestra líneas `DB route=PRIMARY ... tx=none`: son el health check de Actuator, que comprueba solo el primario.
 
-## P06 · Fallo de réplica PostgreSQL (Integrante 2)
+## P06 · Fallo de réplica PostgreSQL (DayronQV)
 
 - **Objetivo:** detener una réplica y comprobar que las consultas continúan mediante la réplica restante.
 - **Procedimiento:** ejecutar `scripts/p06-fallo-replica.sh`. El script:
@@ -213,7 +213,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 
 
   Aquí actuó primero la segunda, 6 s después del `stop`. El único efecto visible fue una lectura de 3 s, sin error. Si la réplica cae a mitad de una lectura (`FATAL 57P01` en la parada rápida), la transacción de solo lectura se reintenta en otra réplica (`DB retry`). Sin ninguna réplica disponible, las lecturas se degradarían al primario.
 
-## P07 · Consistencia de lectura (Integrante 2)
+## P07 · Consistencia de lectura (DayronQV)
 
 - **Objetivo:** crear un registro y consultarlo inmediatamente mediante una operación crítica dirigida al primario.
 - **Procedimiento:** ejecutar `scripts/p07-consistencia.sh`.
@@ -243,7 +243,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. P04 
 
   La marca `@ReadFromPrimary` se aplica antes de que la transacción obtenga su conexión, y el log la distingue con `read=critical`.
 
-## P08 · Recuperación de réplica (Integrante 2)
+## P08 · Recuperación de réplica (DayronQV)
 
 - **Objetivo:** reiniciar la réplica detenida, comprobar su recuperación y verificar que vuelve a participar en las consultas.
 - **Procedimiento:** ejecutar `scripts/p08-recuperacion.sh`. Si `replica1` está en marcha, el script la detiene primero. Después:
