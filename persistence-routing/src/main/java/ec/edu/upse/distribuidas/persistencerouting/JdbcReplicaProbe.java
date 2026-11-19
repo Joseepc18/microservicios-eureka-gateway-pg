@@ -16,6 +16,11 @@ import java.time.Duration;
  *   <li>El retraso de replicación: 0 si ya aplicó todo el WAL recibido; si no, el tiempo desde
  *       la última transacción aplicada. Así, un primario sin escrituras no hace parecer
  *       retrasada a una réplica al día.</li>
+ *   <li>Si tiene un receptor de WAL activo ({@code pg_stat_wal_receiver}): sin él, la réplica no
+ *       está conectada al primario y su retraso medido no crece aunque se quede atrás. La vista
+ *       solo tiene fila mientras el proceso receptor existe, y un rol sin privilegios de
+ *       monitoreo ve esa fila (con el {@code pid}) aunque no vea sus detalles: basta con
+ *       {@code EXISTS}.</li>
  * </ul>
  */
 public class JdbcReplicaProbe implements ReplicaProbe {
@@ -26,7 +31,8 @@ public class JdbcReplicaProbe implements ReplicaProbe {
                      WHEN NOT pg_is_in_recovery() THEN 0
                      WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
                      ELSE COALESCE(EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp()), 0)
-                   END""";
+                   END,
+                   EXISTS (SELECT 1 FROM pg_stat_wal_receiver)""";
 
     private final int queryTimeoutSeconds;
 
@@ -41,7 +47,7 @@ public class JdbcReplicaProbe implements ReplicaProbe {
             statement.setQueryTimeout(queryTimeoutSeconds);
             try (ResultSet rs = statement.executeQuery(QUERY)) {
                 rs.next();
-                return new Status(rs.getBoolean(1), rs.getDouble(2));
+                return new Status(rs.getBoolean(1), rs.getDouble(2), rs.getBoolean(3));
             }
         }
     }

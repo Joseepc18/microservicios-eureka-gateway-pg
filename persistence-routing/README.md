@@ -142,7 +142,7 @@ El routing no se registra como bean ni se expone con `unwrap`: el único `DataSo
 
 ## Resiliencia de réplicas
 
-Una réplica está **apta** si responde, sigue en modo recuperación (`pg_is_in_recovery() = true`, es decir, no fue promovida) y su retraso de replicación no supera `max-lag`. El retraso es 0 si la réplica ya aplicó todo el WAL recibido; si no, es el tiempo desde la última transacción aplicada (`now() - pg_last_xact_replay_timestamp()`). Así, un primario sin escrituras no hace parecer retrasada a una réplica al día.
+Una réplica está **apta** si responde, sigue en modo recuperación (`pg_is_in_recovery() = true`, es decir, no fue promovida), su retraso de replicación no supera `max-lag` y recibe WAL del primario (tiene un receptor de WAL activo en `pg_stat_wal_receiver`; esta condición solo se exige si otra réplica sí lo recibe, ver Limitaciones). El retraso es 0 si la réplica ya aplicó todo el WAL recibido; si no, es el tiempo desde la última transacción aplicada (`now() - pg_last_xact_replay_timestamp()`). Así, un primario sin escrituras no hace parecer retrasada a una réplica al día.
 
 | Paso | Qué hace | Clase |
 |---|---|---|
@@ -195,7 +195,7 @@ DB health node=replica1 estado=DOWN motivo="fallo al obtener conexión: ..." -> 
 DB health node=replica1 verificación fallida 1/2: sin conexión: ...
 DB health sin réplicas disponibles: las lecturas se degradan al primario
 DB route=REPLICA sin réplicas disponibles: la lectura se degrada al primario
-DB health node=replica1 estado=UP recovery=true lag=0.0s -> reincorporada a la rotación; rotación=[replica1, replica2]
+DB health node=replica1 estado=UP recovery=true lag=0.0s wal=streaming -> reincorporada a la rotación; rotación=[replica1, replica2]
 DB health las lecturas vuelven a las réplicas
 DB retry ProductoService.listar: fallo de conexión en una lectura (...); intento 2/2 en otra réplica
 DB route=REPLICA node=replica1 pool agotado (...): se prueba otra réplica sin excluirla
@@ -218,7 +218,7 @@ ReplicaSelectionPolicy replicaSelectionPolicy() {
 ## Limitaciones
 
 - **Primario caído:** no hay promoción automática ni failover (el proyecto no lo exige). Las escrituras y las lecturas críticas fallan mientras el primario no responda.
-- **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde la conexión con el primario, deja de recibir WAL sin que su retraso medido crezca, porque ya aplicó todo lo que recibió. Sus lecturas quedarían desactualizadas hasta que se reconecte. En este proyecto solo ocurre si cae el primario.
+- **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde la conexión con el primario, deja de recibir WAL sin que su retraso medido crezca, porque ya aplicó todo lo que recibió. El monitor lo detecta con `pg_stat_wal_receiver` (sin receptor de WAL activo) y la excluye **si otra réplica sí recibe WAL**. Si ninguna lo recibe, lo más probable es que haya caído el primario: las réplicas siguen en la rotación con datos posiblemente atrasados (se avisa una vez con `DB health ninguna réplica recibe WAL del primario`), porque excluirlas todas dejaría sin lecturas al servicio. Con una sola réplica configurada esta comprobación no puede distinguir los dos casos.
 - **Primera lectura tras una caída:** la lectura a la que le toca la réplica caída espera hasta `connection-timeout` (3 s por defecto) mientras el pool intenta reconectar; después la réplica se excluye y esa lectura se atiende en otra réplica, sin error. Las lecturas siguientes ya no esperan. Se observó así con `docker stop` sobre el clúster real: la lectura tardó unos 3 s. Bajar `connection-timeout` acorta esa espera.
 - **Pool agotado:** si todas las conexiones del pool de una réplica están en uso (`maximum-pool-size`), la lectura espera hasta `connection-timeout` y se intenta en la otra réplica. La réplica **no** se excluye: responde, solo está ocupada. HikariCP lo distingue de un nodo caído porque la excepción de espera agotada no trae causa; cuando el nodo no responde, trae el error de conexión. Si todas las réplicas disponibles están agotadas, la lectura falla con `SQLTransientConnectionException` y no se reintenta ni se pasa al primario, para no trasladarle toda la carga de lectura. El monitor tampoco cuenta un pool agotado como verificación fallida (`DB health node=... verificación omitida: pool agotado`).
 - **Reintento:** solo cubre la transacción de solo lectura más externa. Una lectura que participa en una transacción ya abierta propaga el error a quien abrió la transacción.
