@@ -1,0 +1,124 @@
+# P08 · Recuperación de réplica
+# Ejecutado: 2026-11-18 23:42:07 UTC
+
+## 1. Precondición: replica1 detenida
+
+$ docker compose ps -a primary replica1 replica2 servicio-pedidos
+SERVICE            STATUS
+primary            Up 2 hours (healthy)
+replica1           Exited (0) About a minute ago
+replica2           Up 2 hours (healthy)
+servicio-pedidos   Up 12 minutes (healthy)
+POST /api/productos -> 201 0.032726s, productoId=12
+
+## 2. Cambios mientras replica1 está detenida: 5 pedidos
+
+23:42:08 POST /api/pedidos [p08-caida-1] -> 201 0.042699s, pedidoId=51
+23:42:09 POST /api/pedidos [p08-caida-2] -> 201 0.042762s, pedidoId=52
+23:42:09 POST /api/pedidos [p08-caida-3] -> 201 0.054445s, pedidoId=53
+23:42:09 POST /api/pedidos [p08-caida-4] -> 201 0.038954s, pedidoId=54
+23:42:09 POST /api/pedidos [p08-caida-5] -> 201 0.036938s, pedidoId=55
+
+El slot de replica1 retiene en el primario el WAL que replica1 aún no recibió:
+$ [primary/postgres] SELECT slot_name, active, wal_status, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS wal_retenido FROM pg_replication_slots ORDER BY slot_name
+ slot_name | active | wal_status | wal_retenido 
+-----------+--------+------------+--------------
+ replica1  | f      | reserved   | 22 kB
+ replica2  | t      | reserved   | 0 bytes
+(2 rows)
+
+$ [primary/pedidos_db] SELECT 'primary' AS nodo, count(*) AS pedidos_creados_con_replica1_caida FROM pedido WHERE id BETWEEN 51 AND 55
+  nodo   | pedidos_creados_con_replica1_caida 
+---------+------------------------------------
+ primary |                                  5
+(1 row)
+
+
+## 3. Reinicio: docker compose start replica1
+
+23:42:11 docker compose start replica1
+ Container microservicios-eureka-gateway-pg-primary-1 Waiting 
+ Container microservicios-eureka-gateway-pg-primary-1 Healthy 
+ Container microservicios-eureka-gateway-pg-replica1-1 Starting 
+ Container microservicios-eureka-gateway-pg-replica1-1 Started 
+Lecturas una por segundo hasta que replica1 atienda una (máximo 90 s):
+23:42:13 GET /api/pedidos [p08-reinicio-1] -> 200 0.011169s | DB route=REPLICA node=replica2 tx=read-only
+23:42:15 GET /api/pedidos [p08-reinicio-2] -> 200 0.013660s | DB route=REPLICA node=replica2 tx=read-only
+23:42:17 GET /api/pedidos [p08-reinicio-3] -> 200 0.010840s | DB route=REPLICA node=replica2 tx=read-only
+23:42:18 GET /api/pedidos [p08-reinicio-4] -> 200 0.010332s | DB route=REPLICA node=replica2 tx=read-only
+23:42:20 GET /api/pedidos [p08-reinicio-5] -> 200 0.011256s | DB route=REPLICA node=replica2 tx=read-only
+23:42:22 GET /api/pedidos [p08-reinicio-6] -> 200 0.010559s | DB route=REPLICA node=replica2 tx=read-only
+23:42:23 GET /api/pedidos [p08-reinicio-7] -> 200 0.010263s | DB route=REPLICA node=replica2 tx=read-only
+23:42:25 GET /api/pedidos [p08-reinicio-8] -> 200 0.010662s | DB route=REPLICA node=replica2 tx=read-only
+23:42:27 GET /api/pedidos [p08-reinicio-9] -> 200 0.012710s | DB route=REPLICA node=replica1 tx=read-only
+replica1 atendió de nuevo una lectura 16 s después del start
+$ docker compose ps -a primary replica1 replica2 servicio-pedidos
+SERVICE            STATUS
+primary            Up 2 hours (healthy)
+replica1           Up 15 seconds (healthy)
+replica2           Up 2 hours (healthy)
+servicio-pedidos   Up 12 minutes (healthy)
+
+## 4. Estado de la replicación
+
+$ [primary/postgres] SELECT application_name, state, sync_state, sent_lsn, replay_lsn, replay_lag FROM pg_stat_replication ORDER BY application_name
+ application_name |   state   | sync_state | sent_lsn  | replay_lsn | replay_lag 
+------------------+-----------+------------+-----------+------------+------------
+ replica1         | streaming | async      | 0/6E1A198 | 0/6E1A198  | 
+ replica2         | streaming | async      | 0/6E1A198 | 0/6E1A198  | 
+(2 rows)
+
+$ [primary/postgres] SELECT slot_name, active, wal_status, pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)) AS wal_retenido FROM pg_replication_slots ORDER BY slot_name
+ slot_name | active | wal_status | wal_retenido 
+-----------+--------+------------+--------------
+ replica1  | t      | reserved   | 0 bytes
+ replica2  | t      | reserved   | 0 bytes
+(2 rows)
+
+$ [replica1/postgres] SELECT pg_is_in_recovery() AS en_recuperacion, pg_last_wal_receive_lsn() AS recibido, pg_last_wal_replay_lsn() AS aplicado, (SELECT status FROM pg_stat_wal_receiver) AS wal_receiver
+ en_recuperacion | recibido  | aplicado  | wal_receiver 
+-----------------+-----------+-----------+--------------
+ t               | 0/6E1A198 | 0/6E1A198 | streaming
+(1 row)
+
+replica1 tiene los pedidos creados mientras estaba detenida:
+$ [replica1/pedidos_db] SELECT 'replica1' AS nodo, count(*) AS pedidos_creados_con_replica1_caida FROM pedido WHERE id BETWEEN 51 AND 55
+   nodo   | pedidos_creados_con_replica1_caida 
+----------+------------------------------------
+ replica1 |                                  5
+(1 row)
+
+
+## 5. Reincorporación (DB health) y reparto posterior: 10 × GET /api/pedidos
+
+23:42:31 GET /api/pedidos [p08-despues-1] -> 200 0.014427s
+23:42:31 GET /api/pedidos [p08-despues-2] -> 200 0.015264s
+23:42:32 GET /api/pedidos [p08-despues-3] -> 200 0.013302s
+23:42:32 GET /api/pedidos [p08-despues-4] -> 200 0.013499s
+23:42:32 GET /api/pedidos [p08-despues-5] -> 200 0.013168s
+23:42:32 GET /api/pedidos [p08-despues-6] -> 200 0.032061s
+23:42:32 GET /api/pedidos [p08-despues-7] -> 200 0.013508s
+23:42:32 GET /api/pedidos [p08-despues-8] -> 200 0.013924s
+23:42:32 GET /api/pedidos [p08-despues-9] -> 200 0.016073s
+23:42:32 GET /api/pedidos [p08-despues-10] -> 200 0.013843s
+p08-despues-1 -> DB route=REPLICA node=replica2 tx=read-only
+p08-despues-2 -> DB route=REPLICA node=replica1 tx=read-only
+p08-despues-3 -> DB route=REPLICA node=replica2 tx=read-only
+p08-despues-4 -> DB route=REPLICA node=replica1 tx=read-only
+p08-despues-5 -> DB route=REPLICA node=replica2 tx=read-only
+p08-despues-6 -> DB route=REPLICA node=replica1 tx=read-only
+p08-despues-7 -> DB route=REPLICA node=replica2 tx=read-only
+p08-despues-8 -> DB route=REPLICA node=replica1 tx=read-only
+p08-despues-9 -> DB route=REPLICA node=replica2 tx=read-only
+p08-despues-10 -> DB route=REPLICA node=replica1 tx=read-only
+Logs de enrutamiento guardados en docs/evidencias/P08/logs-servicio-pedidos.txt (44 líneas)
+
+2026-11-18T23:42:23.372Z  INFO [] 1 --- [servicio-pedidos] [ routing-health] e.e.u.d.p.ReplicaPoolDataSource          : DB health node=replica1 estado=UP recovery=true lag=0.0s -> reincorporada a la rotación; rotación=[replica1, replica2]
+
+replica1 reincorporada a la rotación 12 s después de docker compose start
+
+## Resultado
+
+Pedidos creados con replica1 caída presentes en replica1: 5 de 5
+Reincorporación registrada: si; lecturas posteriores: replica1=5 replica2=5
+P08 OK

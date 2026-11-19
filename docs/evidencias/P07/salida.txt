@@ -1,0 +1,112 @@
+# P07 · Consistencia de lectura
+# Ejecutado: 2026-11-18 23:41:17 UTC
+
+## 1. Estado inicial
+
+$ docker compose ps -a primary replica1 replica2 servicio-pedidos
+SERVICE            STATUS
+primary            Up 2 hours (healthy)
+replica1           Exited (0) About a minute ago
+replica2           Up 2 hours (healthy)
+servicio-pedidos   Up 11 minutes (healthy)
+POST /api/productos -> 201 0.018073s, productoId=11
+
+## 2. Escritura seguida de lectura crítica inmediata (20 veces)
+
+23:41:19 POST /api/pedidos [p07-crear-1] -> 201 0.041367s, pedidoId=30
+23:41:20 GET /api/pedidos/30 [p07-leer-1] -> 200 0.032256s {"id":30,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:19.778534Z"}
+23:41:20 POST /api/pedidos [p07-crear-2] -> 201 0.036522s, pedidoId=31
+23:41:20 GET /api/pedidos/31 [p07-leer-2] -> 200 0.017615s {"id":31,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:20.213635Z"}
+23:41:20 POST /api/pedidos [p07-crear-3] -> 201 0.041915s, pedidoId=32
+23:41:20 GET /api/pedidos/32 [p07-leer-3] -> 200 0.013666s {"id":32,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:20.643226Z"}
+23:41:21 POST /api/pedidos [p07-crear-4] -> 201 0.040250s, pedidoId=33
+23:41:21 GET /api/pedidos/33 [p07-leer-4] -> 200 0.022298s {"id":33,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:21.070862Z"}
+23:41:21 POST /api/pedidos [p07-crear-5] -> 201 0.041295s, pedidoId=34
+23:41:21 GET /api/pedidos/34 [p07-leer-5] -> 200 0.014149s {"id":34,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:21.511557Z"}
+23:41:22 POST /api/pedidos [p07-crear-6] -> 201 0.058513s, pedidoId=35
+23:41:22 GET /api/pedidos/35 [p07-leer-6] -> 200 0.037777s {"id":35,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:21.977272Z"}
+23:41:22 POST /api/pedidos [p07-crear-7] -> 201 0.038290s, pedidoId=36
+23:41:22 GET /api/pedidos/36 [p07-leer-7] -> 200 0.013265s {"id":36,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:22.502618Z"}
+23:41:23 POST /api/pedidos [p07-crear-8] -> 201 0.050625s, pedidoId=37
+23:41:23 GET /api/pedidos/37 [p07-leer-8] -> 200 0.018602s {"id":37,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:22.945182Z"}
+23:41:23 POST /api/pedidos [p07-crear-9] -> 201 0.044433s, pedidoId=38
+23:41:23 GET /api/pedidos/38 [p07-leer-9] -> 200 0.018486s {"id":38,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:23.406136Z"}
+23:41:24 POST /api/pedidos [p07-crear-10] -> 201 0.058923s, pedidoId=39
+23:41:24 GET /api/pedidos/39 [p07-leer-10] -> 200 0.015069s {"id":39,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:23.956387Z"}
+23:41:24 POST /api/pedidos [p07-crear-11] -> 201 0.043803s, pedidoId=40
+23:41:24 GET /api/pedidos/40 [p07-leer-11] -> 200 0.016151s {"id":40,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:24.502592Z"}
+23:41:25 POST /api/pedidos [p07-crear-12] -> 201 0.042102s, pedidoId=41
+23:41:25 GET /api/pedidos/41 [p07-leer-12] -> 200 0.013409s {"id":41,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:25.091095Z"}
+23:41:25 POST /api/pedidos [p07-crear-13] -> 201 0.048274s, pedidoId=42
+23:41:25 GET /api/pedidos/42 [p07-leer-13] -> 200 0.017243s {"id":42,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:25.583148Z"}
+23:41:26 POST /api/pedidos [p07-crear-14] -> 201 0.060109s, pedidoId=43
+23:41:26 GET /api/pedidos/43 [p07-leer-14] -> 200 0.015509s {"id":43,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:26.124471Z"}
+23:41:26 POST /api/pedidos [p07-crear-15] -> 201 0.045885s, pedidoId=44
+23:41:26 GET /api/pedidos/44 [p07-leer-15] -> 200 0.019184s {"id":44,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:26.616975Z"}
+23:41:27 POST /api/pedidos [p07-crear-16] -> 201 0.050407s, pedidoId=45
+23:41:27 GET /api/pedidos/45 [p07-leer-16] -> 200 0.014353s {"id":45,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:27.166245Z"}
+23:41:27 POST /api/pedidos [p07-crear-17] -> 201 0.044343s, pedidoId=46
+23:41:28 GET /api/pedidos/46 [p07-leer-17] -> 200 0.041388s {"id":46,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:27.671853Z"}
+23:41:28 POST /api/pedidos [p07-crear-18] -> 201 0.049882s, pedidoId=47
+23:41:28 GET /api/pedidos/47 [p07-leer-18] -> 200 0.013214s {"id":47,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:28.239904Z"}
+23:41:28 POST /api/pedidos [p07-crear-19] -> 201 0.043692s, pedidoId=48
+23:41:29 GET /api/pedidos/48 [p07-leer-19] -> 200 0.013476s {"id":48,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:28.744045Z"}
+23:41:29 POST /api/pedidos [p07-crear-20] -> 201 0.040404s, pedidoId=49
+23:41:29 GET /api/pedidos/49 [p07-leer-20] -> 200 0.012791s {"id":49,"productoId":11,"cantidad":1,"total":10.00,"estado":"CREADO","fecha":"2026-11-18T23:41:29.198368Z"}
+p07-crear-1 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-1 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-2 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-2 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-3 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-3 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-4 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-4 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-5 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-5 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-6 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-6 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-7 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-7 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-8 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-8 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-9 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-9 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-10 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-10 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-11 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-11 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-12 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-12 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-13 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-13 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-14 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-14 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-15 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-15 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-16 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-16 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-17 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-17 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-18 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-18 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-19 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-19 -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-crear-20 -> DB route=PRIMARY node=primary tx=read-write | p07-leer-20 -> DB route=PRIMARY node=primary tx=read-only read=critical
+
+## 3. Contraste: réplicas con retraso (replay pausado en: replica2)
+
+$ [replica2/postgres] SELECT 'replica2' AS nodo, pg_wal_replay_pause()
+   nodo   | pg_wal_replay_pause 
+----------+---------------------
+ replica2 | 
+(1 row)
+
+23:41:58 POST /api/pedidos [p07-contraste-crear] -> 201 0.048694s, pedidoId=50
+23:41:58 GET /api/pedidos/50 (crítica) [p07-contraste-critica] -> 200 0.014034s
+23:41:58 GET /api/pedidos (ordinaria) [p07-contraste-ordinaria] -> 200 0.016102s, incluye el pedido 50: no
+$ [replica2/pedidos_db] SELECT 'replica2' AS nodo, count(*) AS tiene_el_pedido FROM pedido WHERE id = 50
+   nodo   | tiene_el_pedido 
+----------+-----------------
+ replica2 |               0
+(1 row)
+
+$ [primary/pedidos_db] SELECT 'primary' AS nodo, count(*) AS tiene_el_pedido FROM pedido WHERE id = 50
+  nodo   | tiene_el_pedido 
+---------+-----------------
+ primary |               1
+(1 row)
+
+Se reanuda el replay:
+23:42:01 GET /api/pedidos (ordinaria) [p07-contraste-despues] -> 200 0.010811s, incluye el pedido 50: si
+p07-contraste-crear -> DB route=PRIMARY node=primary tx=read-write
+p07-contraste-critica -> DB route=PRIMARY node=primary tx=read-only read=critical
+p07-contraste-ordinaria -> DB route=REPLICA node=replica2 tx=read-only
+p07-contraste-despues -> DB route=REPLICA node=replica2 tx=read-only
+Logs de enrutamiento guardados en docs/evidencias/P07/logs-servicio-pedidos.txt (85 líneas)
+
+## Resultado
+
+Lectura crítica inmediata: encontrada 20 de 20; atendida por el primario 20 de 20
+Contraste con réplicas retrasadas: crítica encuentra el pedido=si; ordinaria lo ve=no; ordinaria tras reanudar=si
+P07 OK

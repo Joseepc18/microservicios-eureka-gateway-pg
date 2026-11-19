@@ -1,0 +1,124 @@
+# P05 · Enrutamiento de base de datos
+# Ejecutado: 2026-11-18 23:39:49 UTC
+
+## 1. Estado inicial
+
+$ docker compose ps -a primary replica1 replica2 servicio-pedidos
+SERVICE            STATUS
+primary            Up 2 hours (healthy)
+replica1           Up 19 seconds (healthy)
+replica2           Up 2 hours (healthy)
+servicio-pedidos   Up 10 minutes (healthy)
+
+Rol de cada nodo (el primario no está en recuperación; las réplicas sí):
+$ [primary/pedidos_db] SELECT 'primary' AS nodo, pg_is_in_recovery() AS en_recuperacion, pg_postmaster_start_time() AS iniciado
+  nodo   | en_recuperacion |           iniciado            
+---------+-----------------+-------------------------------
+ primary | f               | 2026-11-18 21:52:41.734677+00
+(1 row)
+
+$ [replica1/pedidos_db] SELECT 'replica1' AS nodo, pg_is_in_recovery() AS en_recuperacion, pg_postmaster_start_time() AS iniciado
+   nodo   | en_recuperacion |           iniciado            
+----------+-----------------+-------------------------------
+ replica1 | t               | 2026-11-18 23:39:30.818849+00
+(1 row)
+
+$ [replica2/pedidos_db] SELECT 'replica2' AS nodo, pg_is_in_recovery() AS en_recuperacion, pg_postmaster_start_time() AS iniciado
+   nodo   | en_recuperacion |           iniciado            
+----------+-----------------+-------------------------------
+ replica2 | t               | 2026-11-18 21:52:45.962159+00
+(1 row)
+
+$ [primary/postgres] SELECT application_name, state, sync_state FROM pg_stat_replication ORDER BY application_name
+ application_name |   state   | sync_state 
+------------------+-----------+------------
+ replica1         | streaming | async
+ replica2         | streaming | async
+(2 rows)
+
+
+## 2. Escrituras: 4 pedidos (POST /api/pedidos por el Gateway)
+
+POST /api/productos -> 201 0.017652s, productoId=10
+23:39:52 POST /api/pedidos [p05-escritura-1] -> 201 0.039150s, pedidoId=26
+23:39:52 POST /api/pedidos [p05-escritura-2] -> 201 0.034367s, pedidoId=27
+23:39:52 POST /api/pedidos [p05-escritura-3] -> 201 0.043521s, pedidoId=28
+23:39:52 POST /api/pedidos [p05-escritura-4] -> 201 0.031170s, pedidoId=29
+
+## 3. Lecturas ordinarias: 10 × GET /api/pedidos
+
+23:39:54 GET /api/pedidos [p05-lectura-1] -> 200 0.011818s, pedidos=29
+23:39:54 GET /api/pedidos [p05-lectura-2] -> 200 0.012454s, pedidos=29
+23:39:54 GET /api/pedidos [p05-lectura-3] -> 200 0.011499s, pedidos=29
+23:39:54 GET /api/pedidos [p05-lectura-4] -> 200 0.013544s, pedidos=29
+23:39:54 GET /api/pedidos [p05-lectura-5] -> 200 0.011209s, pedidos=29
+23:39:54 GET /api/pedidos [p05-lectura-6] -> 200 0.012140s, pedidos=29
+23:39:54 GET /api/pedidos [p05-lectura-7] -> 200 0.011993s, pedidos=29
+23:39:55 GET /api/pedidos [p05-lectura-8] -> 200 0.011950s, pedidos=29
+23:39:55 GET /api/pedidos [p05-lectura-9] -> 200 0.011477s, pedidos=29
+23:39:55 GET /api/pedidos [p05-lectura-10] -> 200 0.011132s, pedidos=29
+
+## 4. Nodo que atendió cada solicitud (log DB route de servicio-pedidos, por X-Request-Id)
+
+p05-escritura-1 -> DB route=PRIMARY node=primary tx=read-write
+p05-escritura-2 -> DB route=PRIMARY node=primary tx=read-write
+p05-escritura-3 -> DB route=PRIMARY node=primary tx=read-write
+p05-escritura-4 -> DB route=PRIMARY node=primary tx=read-write
+p05-lectura-1 -> DB route=REPLICA node=replica2 tx=read-only
+p05-lectura-2 -> DB route=REPLICA node=replica1 tx=read-only
+p05-lectura-3 -> DB route=REPLICA node=replica2 tx=read-only
+p05-lectura-4 -> DB route=REPLICA node=replica1 tx=read-only
+p05-lectura-5 -> DB route=REPLICA node=replica2 tx=read-only
+p05-lectura-6 -> DB route=REPLICA node=replica1 tx=read-only
+p05-lectura-7 -> DB route=REPLICA node=replica2 tx=read-only
+p05-lectura-8 -> DB route=REPLICA node=replica1 tx=read-only
+p05-lectura-9 -> DB route=REPLICA node=replica2 tx=read-only
+p05-lectura-10 -> DB route=REPLICA node=replica1 tx=read-only
+
+## 5. Consultas SQL en cada nodo
+
+Los 4 pedidos nuevos están en los tres nodos (replicados desde el primario):
+$ [primary/pedidos_db] SELECT 'primary' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 10
+  nodo   | pedidos_de_p05 
+---------+----------------
+ primary |              4
+(1 row)
+
+$ [replica1/pedidos_db] SELECT 'replica1' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 10
+   nodo   | pedidos_de_p05 
+----------+----------------
+ replica1 |              4
+(1 row)
+
+$ [replica2/pedidos_db] SELECT 'replica2' AS nodo, count(*) AS pedidos_de_p05 FROM pedido WHERE producto_id = 10
+   nodo   | pedidos_de_p05 
+----------+----------------
+ replica2 |              4
+(1 row)
+
+Conexiones del rol pedidos_app abiertas en cada nodo (pools de HikariCP del módulo):
+$ [primary/postgres] SELECT 'primary' AS nodo, count(*) AS conexiones FROM pg_stat_activity WHERE usename = 'pedidos_app'
+  nodo   | conexiones 
+---------+------------
+ primary |          5
+(1 row)
+
+$ [replica1/postgres] SELECT 'replica1' AS nodo, count(*) AS conexiones FROM pg_stat_activity WHERE usename = 'pedidos_app'
+   nodo   | conexiones 
+----------+------------
+ replica1 |          5
+(1 row)
+
+$ [replica2/postgres] SELECT 'replica2' AS nodo, count(*) AS conexiones FROM pg_stat_activity WHERE usename = 'pedidos_app'
+   nodo   | conexiones 
+----------+------------
+ replica2 |          5
+(1 row)
+
+Logs de enrutamiento guardados en docs/evidencias/P05/logs-servicio-pedidos.txt (26 líneas)
+
+## Resultado
+
+Escrituras atendidas por el primario: 4 de 4
+Lecturas ordinarias: replica1=5 replica2=5 (total 10)
+P05 OK
