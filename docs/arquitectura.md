@@ -37,7 +37,7 @@ Versiones: Java 21, Spring Boot 3.5.16 y Spring Cloud 2025.0.3 (`2025.0.x` es el
 
 ## Eureka: configuración y tiempos de detección
 
-`discovery-server` corre en el puerto `8761` como servidor único (`register-with-eureka=false`, `fetch-registry=false`). Dashboard: `http://localhost:8761`. Registro en JSON: `http://localhost:8761/eureka/apps` (con el header `Accept: application/json`). Salud: `/actuator/health`.
+`discovery-server` corre en el puerto `8761` como servidor único (`register-with-eureka=false`, `fetch-registry=false`). Dashboard: `http://127.0.0.1:8761`. Registro en JSON: `http://127.0.0.1:8761/eureka/apps` (con el header `Accept: application/json`). Salud: `/actuator/health`.
 
 Tiempos ajustados para que una caída sea visible durante la demo (los valores por defecto de Eureka son mucho mayores):
 
@@ -172,10 +172,36 @@ docker compose up -d
 | PostgreSQL réplica 1 | 5433 (interno `replica1:5432`) |
 | PostgreSQL réplica 2 | 5434 (interno `replica2:5432`) |
 
+## Redes de Compose
+
+| Red | Quién está conectado | Para qué |
+|---|---|---|
+| `red_app` | `api-gateway`, `discovery-server`, `servicio-productos-1`, `servicio-productos-2`, `servicio-pedidos` | Tráfico HTTP: Gateway a servicios, servicios a Eureka y `servicio-pedidos` a `servicio-productos` |
+| `red_datos` | `servicio-productos-1`, `servicio-productos-2`, `servicio-pedidos`, `primary`, `replica1`, `replica2` | Tráfico hacia PostgreSQL y replicación entre el primario y las réplicas |
+
+Los tres servicios de negocio están en las dos redes. El Gateway y Eureka no están en `red_datos`, y PostgreSQL no está en `red_app`: el Gateway no puede llegar a la base de datos. Cada servicio anuncia en Eureka su nombre de servicio de Compose (`EUREKA_INSTANCE_HOSTNAME`) y no una IP, porque un contenedor con dos redes tiene dos IP y la elegida podría ser la de `red_datos`, inalcanzable para el Gateway.
+
 ## Diagrama
 
-_Pendiente: se agregará en esta carpeta (`docs/diagrama-arquitectura.*`) y se referenciará desde el README._
+Los diagramas (componentes con puertos y redes, enrutamiento de persistencia y secuencia de la creación de un pedido) están en [diagrama-arquitectura.md](diagrama-arquitectura.md). El de componentes también está en el [README](../README.md#arquitectura).
 
 ## Flujo de una operación de negocio
 
-_Pendiente: se documentará con la secuencia completa de una creación de pedido (Gateway → pedidos → productos → PostgreSQL)._
+Creación de un pedido (`POST /api/pedidos`), la operación que cruza todos los componentes. La secuencia dibujada está en [diagrama-arquitectura.md](diagrama-arquitectura.md#secuencia-crear-un-pedido).
+
+1. **Cliente a Gateway.** `POST /api/pedidos` con `{"productoId": 1, "cantidad": 2}`. La ruta `/api/pedidos/**` coincide con `lb://servicio-pedidos`; el Gateway quita el prefijo `/api` y elige una instancia registrada en Eureka con su copia local del registro. Eureka no interviene en cada solicitud.
+2. **Gateway a `servicio-pedidos`.** Llega `POST /pedidos`. El `POST` no se reintenta en el Gateway.
+3. **`servicio-pedidos` a `servicio-productos`: consulta.** `GET /productos/{id}` a `http://servicio-productos`, un nombre lógico que Spring Cloud LoadBalancer resuelve con el registro de Eureka y reparte entre las dos instancias. La instancia lee el producto en una réplica (lectura ordinaria, `readOnly`). Si no existe responde `404`; si no hay instancias o no responde, `servicio-pedidos` responde `503`.
+4. **Validación de stock.** Si el stock leído es menor que la cantidad, `servicio-pedidos` responde `409` sin modificar nada.
+5. **`servicio-pedidos` a `servicio-productos`: descuento.** `PATCH /productos/{id}/stock`. La instancia ejecuta una sola sentencia atómica (`UPDATE ... WHERE stock >= cantidad`) en el **primario**, así que dos instancias que descuenten a la vez nunca dejan el stock en negativo. Es la verificación definitiva: si otra solicitud consumió el stock, responde `409`.
+6. **Guardado del pedido.** `servicio-pedidos` inserta el pedido en `pedidos_db` en el **primario** (escritura) con el total calculado (`precio × cantidad`) y responde `201` con `Location`. Entre las llamadas HTTP y el guardado no mantiene ninguna transacción abierta.
+7. **Consulta posterior.** `GET /api/pedidos/{id}` se atiende siempre desde el primario (lectura crítica, `@ReadFromPrimary`), porque el cliente lo consulta justo después de crear el pedido y una réplica con retraso podría no tenerlo. El listado `GET /api/pedidos` sí se reparte entre las réplicas.
+
+Qué pasa cuando algo falla (detalle en [api.md](api.md)):
+
+- **Antes del descuento** (producto inexistente, stock insuficiente, `servicio-productos` caído): no se modifica nada.
+- **Después del descuento**, si falla el guardado: el stock queda descontado sin pedido. No hay transacciones distribuidas; se registra un `ERROR` con el `X-Request-Id` y la corrección es manual.
+- **Una instancia de `servicio-productos` caída:** mientras Eureka no la expulsa (~35 s en el peor caso para que `servicio-pedidos` deje de elegirla) algunas solicitudes pueden recibir `503` y el cliente debe reintentarlas. `servicio-pedidos` no reintenta: repetir el `PATCH` podría descontar dos veces.
+- **Una réplica PostgreSQL caída:** las lecturas continúan por la otra réplica (o por el primario si no queda ninguna); el cliente no ve errores.
+
+El mismo `X-Request-Id` viaja del cliente a `servicio-pedidos` y de ahí a `servicio-productos`, de modo que una solicitud se sigue en los logs de ambos servicios.
