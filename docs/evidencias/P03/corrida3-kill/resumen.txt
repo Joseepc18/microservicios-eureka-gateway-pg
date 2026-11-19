@@ -1,0 +1,109 @@
+== P03 · Fallo de instancia ==
+Inicio:      2026-11-18 19:17:08
+Modo:        kill (docker compose kill servicio-productos-2)
+Carga:       GET http://127.0.0.1:8080/api/productos cada 200 ms durante 90 s
+Fallo en:    t=20 s   Fase 'durante': 40 s desde el fallo
+Instancia:   servicio-productos:productos-2 (servicio de Compose: servicio-productos-2)
+Detalle en:  docs/evidencias/P03/corrida3-kill
+Estado inicial en Eureka de productos-2: UP
+
+[t=20.2 s] docker compose kill servicio-productos-2
+[t=90.3 s] fin de la carga; esperando solicitudes en curso
+Comando de fallo terminado en t=21969 ms (lanzado en t=20208 ms)
+
+== Resultados por fases (tiempos medidos desde el inicio de la carga) ==
+--- Fase 'antes' (t < 20.2 s) ---
+  Solicitudes: 71   Exitosas (2xx): 71   Errores: 0
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 0   latencia máxima exitosa: 62 ms
+  Códigos HTTP:
+    200       71
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1     35
+    productos-2     36
+--- Fase 'durante' (desde el fallo, 40 s) ---
+  Solicitudes: 130   Exitosas (2xx): 119   Errores: 11
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 40   latencia máxima exitosa: 4213 ms
+  Latencia máxima de una solicitud con error: 6203 ms
+  Códigos HTTP:
+    200      119
+    500       11
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    -               11
+    productos-1    118
+    productos-2      1
+--- Fase 'despues' (después de la ventana) ---
+  Solicitudes: 102   Exitosas (2xx): 102   Errores: 0
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 0   latencia máxima exitosa: 77 ms
+  Códigos HTTP:
+    200      102
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1    102
+
+== Errores en el tiempo (solicitudes en ventanas de 5 s desde el fallo) ==
+Ventana (s)         Solicitudes  Errores
+antes del fallo              71        0
++0 a +5                      19        1
++5 a +10                     16        4
++10 a +15                    17        1
++15 a +20                    16        3
++20 a +25                    16        2
++25 a +30                    16        0
++30 a +35                    13        0
++35 a +40                    17        0
++40 a +45                    19        0
++45 a +50                    16        0
++50 a +55                    16        0
++55 a +60                    17        0
++60 a +65                    18        0
++65 a +70                    16        0
+
+== Tiempos (segundos desde el comando de fallo) ==
+Errores tras el fallo:            11
+Primera solicitud con error:      +0.9 s
+Última solicitud con error:       +22.4 s  (desde ahí no hay más errores)
+Solicitudes rescatadas por reintento (>= 1500 ms): 40
+Primera / última rescatada:       +1.4 s / +30.4 s  (el Gateway aún elegía la instancia caída)
+Eureka la retira del registro:    +25.8 s  (muestreo cada ~1 s)
+Referencia documentada (docs/arquitectura.md): expulsión ~24 s; Gateway deja de enviarle tráfico ~35 s (peor caso).
+
+== Estado de la instancia en el registro de Eureka (solo cambios) ==
+  t=   0.1 s (-20.1 s respecto al fallo): UP
+  t=  46.0 s (+25.8 s respecto al fallo): AUSENTE
+
+== Log del Gateway durante la prueba: destino y estado (target / status, recuento) ==
+  servicio-productos-1:8081    200      255
+  servicio-productos-2:8082    200       37
+  servicio-productos-2:8082    500       11
+  (el Gateway registra una línea por solicitud con el destino del último intento)
+Líneas de error del Gateway (status 5xx), hasta 15:
+  2026-11-19T00:17:36.849Z  INFO 1 --- [api-gateway] [r-http-epoll-10] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6193
+  2026-11-19T00:17:41.864Z  INFO 1 --- [api-gateway] [r-http-epoll-11] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6166
+  2026-11-19T00:17:42.148Z  INFO 1 --- [api-gateway] [or-http-epoll-1] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6168
+  2026-11-19T00:17:42.421Z  INFO 1 --- [api-gateway] [or-http-epoll-3] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6165
+  2026-11-19T00:17:42.732Z  INFO 1 --- [api-gateway] [or-http-epoll-5] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6166
+  2026-11-19T00:17:47.549Z  INFO 1 --- [api-gateway] [r-http-epoll-12] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6175
+  2026-11-19T00:17:52.787Z  INFO 1 --- [api-gateway] [or-http-epoll-2] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6170
+  2026-11-19T00:17:53.030Z  INFO 1 --- [api-gateway] [or-http-epoll-4] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6167
+  2026-11-19T00:17:54.585Z  INFO 1 --- [api-gateway] [r-http-epoll-11] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6168
+  2026-11-19T00:17:58.066Z  INFO 1 --- [api-gateway] [or-http-epoll-3] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6167
+  2026-11-19T00:17:58.343Z  INFO 1 --- [api-gateway] [or-http-epoll-5] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6168
+
+== Recuperación: docker compose start servicio-productos-2 ==
+   Container microservicios-eureka-gateway-pg-primary-1 Waiting 
+   Container microservicios-eureka-gateway-pg-discovery-server-1 Waiting 
+   Container microservicios-eureka-gateway-pg-discovery-server-1 Healthy 
+   Container microservicios-eureka-gateway-pg-primary-1 Healthy 
+   Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Starting 
+   Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Started 
+[arranque ordenado a las 19:18:45]
+Eureka: servicio-productos:productos-2 vuelve a figurar UP a los 20.9 s del comando start.
+Gateway: productos-2 vuelve a responder solicitudes a los 27.6 s del comando start.
+
+Comprobación posterior: 30 solicitudes seguidas
+  productos-1   15
+  productos-2   15
+  Códigos:
+    200     30
+
+Fin: 2026-11-18 19:19:24
+exit=0

@@ -1,0 +1,101 @@
+== P03 · Fallo de instancia ==
+Inicio:      2026-11-18 19:11:50
+Modo:        kill (docker compose kill servicio-productos-2)
+Carga:       GET http://127.0.0.1:8080/api/productos cada 200 ms durante 90 s
+Fallo en:    t=20 s   Fase 'durante': 40 s desde el fallo
+Instancia:   servicio-productos:productos-2 (servicio de Compose: servicio-productos-2)
+Detalle en:  docs/evidencias/P03/kill
+Estado inicial en Eureka de productos-2: UP
+
+[t=20.2 s] docker compose kill servicio-productos-2
+[t=90.2 s] fin de la carga; esperando solicitudes en curso
+Comando de fallo terminado en t=23130 ms (lanzado en t=20172 ms)
+
+== Resultados por fases (tiempos medidos desde el inicio de la carga) ==
+--- Fase 'antes' (t < 20.2 s) ---
+  Solicitudes: 100   Exitosas (2xx): 100   Errores: 0
+  Códigos HTTP:
+    200      100
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1     50
+    productos-2     50
+--- Fase 'durante' (desde el fallo, 40 s) ---
+  Solicitudes: 138   Exitosas (2xx): 129   Errores: 9
+  Códigos HTTP:
+    200      129
+    500        9
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    -                9
+    productos-1    127
+    productos-2      2
+--- Fase 'despues' (después de la ventana) ---
+  Solicitudes: 115   Exitosas (2xx): 115   Errores: 0
+  Códigos HTTP:
+    200      115
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1    115
+
+== Errores en el tiempo (solicitudes en ventanas de 5 s desde el fallo) ==
+Ventana (s)         Solicitudes  Errores
+antes del fallo             100        0
++0 a +5                      19        1
++5 a +10                     18        4
++10 a +15                    18        1
++15 a +20                    15        0
++20 a +25                    13        2
++25 a +30                    18        1
++30 a +35                    20        0
++35 a +40                    17        0
++40 a +45                    16        0
++45 a +50                    19        0
++50 a +55                    21        0
++55 a +60                    15        0
++60 a +65                    17        0
++65 a +70                    27        0
+
+== Tiempos (segundos desde el comando de fallo) ==
+Errores tras el fallo:            9
+Primera solicitud con error:      +2.1 s
+Última solicitud con error:       +26.7 s  (desde ahí no hay más errores)
+Eureka la retira del registro:    +24.5 s  (muestreo cada ~1 s)
+Referencia documentada (docs/arquitectura.md): expulsión ~24 s; Gateway deja de enviarle tráfico ~35 s (peor caso).
+
+== Estado de la instancia en el registro de Eureka (solo cambios) ==
+  t=   0.1 s (-20.1 s respecto al fallo): UP
+  t=  44.7 s (+24.5 s respecto al fallo): AUSENTE
+
+== Log del Gateway durante la prueba: destino y estado (target / status, recuento) ==
+  servicio-productos-1:8081    200      292
+  servicio-productos-2:8082    200       52
+  servicio-productos-2:8082    500        9
+  (el Gateway registra una línea por solicitud con el destino del último intento)
+Líneas de error del Gateway (status 5xx), hasta 15:
+  2026-11-19T00:12:20.145Z  INFO 1 --- [api-gateway] [or-http-epoll-9] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6294
+  2026-11-19T00:12:25.223Z  INFO 1 --- [api-gateway] [or-http-epoll-9] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6165
+  2026-11-19T00:12:26.284Z  INFO 1 --- [api-gateway] [or-http-epoll-5] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6168
+  2026-11-19T00:12:27.597Z  INFO 1 --- [api-gateway] [r-http-epoll-11] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6170
+  2026-11-19T00:12:27.750Z  INFO 1 --- [api-gateway] [or-http-epoll-2] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6165
+  2026-11-19T00:12:32.263Z  INFO 1 --- [api-gateway] [or-http-epoll-8] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6172
+  2026-11-19T00:12:39.138Z  INFO 1 --- [api-gateway] [r-http-epoll-11] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6169
+  2026-11-19T00:12:39.446Z  INFO 1 --- [api-gateway] [or-http-epoll-1] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6198
+  2026-11-19T00:12:44.771Z  INFO 1 --- [api-gateway] [or-http-epoll-8] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos route=servicio-productos target=servicio-productos-2:8082 instanceId=- status=500 ms=6165
+
+== Recuperación: docker compose start servicio-productos-2 ==
+   Container microservicios-eureka-gateway-pg-primary-1 Waiting 
+   Container microservicios-eureka-gateway-pg-discovery-server-1 Waiting 
+   Container microservicios-eureka-gateway-pg-primary-1 Healthy 
+   Container microservicios-eureka-gateway-pg-discovery-server-1 Healthy 
+   Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Starting 
+   Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Started 
+[arranque ordenado a las 19:13:26]
+Eureka: servicio-productos:productos-2 vuelve a figurar UP a los 15.0 s del comando start.
+Gateway: productos-2 vuelve a responder solicitudes a los 22.1 s del comando start.
+
+Comprobación posterior: 30 solicitudes seguidas
+  productos-1   16
+  productos-2   14
+  Códigos:
+    200     30
+
+Fin: 2026-11-18 19:13:57
+exit=0

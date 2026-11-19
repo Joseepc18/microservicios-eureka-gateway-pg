@@ -1,0 +1,30 @@
+# Registro del servidor Eureka (discovery-server) para servicio-productos:productos-2 durante todas las pruebas P03 (hora UTC; la hora local de los resúmenes es UTC-5)
+# Las líneas "expired lease" y "Cancelled instance" (por expiración del lease) corresponden, en orden, a las tres corridas kill y a la corrida stop; "status DOWN" es el apagado ordenado de la corrida stop.
+$ docker compose logs --no-log-prefix discovery-server | grep -E "productos-2" | cut -c1-230
+2026-11-19T00:07:30.025Z  INFO 1 --- [discovery-server] [nio-8761-exec-6] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=false)
+2026-11-19T00:07:30.359Z  INFO 1 --- [discovery-server] [nio-8761-exec-9] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=true)
+2026-11-19T00:12:33.273Z  WARN 1 --- [discovery-server] [a-EvictionTimer] c.n.e.registry.AbstractInstanceRegistry  : DS: Registry: expired lease for SERVICIO-PRODUCTOS/servicio-productos:productos-2
+2026-11-19T00:12:33.274Z  INFO 1 --- [discovery-server] [a-EvictionTimer] c.n.e.registry.AbstractInstanceRegistry  : Cancelled instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 (replication=false)
+2026-11-19T00:13:38.952Z  INFO 1 --- [discovery-server] [nio-8761-exec-7] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=false)
+2026-11-19T00:13:39.194Z  INFO 1 --- [discovery-server] [nio-8761-exec-2] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=true)
+2026-11-19T00:15:23.284Z  WARN 1 --- [discovery-server] [a-EvictionTimer] c.n.e.registry.AbstractInstanceRegistry  : DS: Registry: expired lease for SERVICIO-PRODUCTOS/servicio-productos:productos-2
+2026-11-19T00:15:23.316Z  INFO 1 --- [discovery-server] [a-EvictionTimer] c.n.e.registry.AbstractInstanceRegistry  : Cancelled instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 (replication=false)
+2026-11-19T00:16:29.479Z  INFO 1 --- [discovery-server] [nio-8761-exec-3] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=false)
+2026-11-19T00:16:29.985Z  INFO 1 --- [discovery-server] [nio-8761-exec-7] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=true)
+2026-11-19T00:17:53.293Z  WARN 1 --- [discovery-server] [a-EvictionTimer] c.n.e.registry.AbstractInstanceRegistry  : DS: Registry: expired lease for SERVICIO-PRODUCTOS/servicio-productos:productos-2
+2026-11-19T00:17:53.305Z  INFO 1 --- [discovery-server] [a-EvictionTimer] c.n.e.registry.AbstractInstanceRegistry  : Cancelled instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 (replication=false)
+2026-11-19T00:19:01.511Z  INFO 1 --- [discovery-server] [nio-8761-exec-1] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=false)
+2026-11-19T00:19:01.686Z  INFO 1 --- [discovery-server] [io-8761-exec-10] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=true)
+2026-11-19T00:19:56.526Z  INFO 1 --- [discovery-server] [nio-8761-exec-9] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status DOWN (replication=false)
+2026-11-19T00:19:56.753Z  INFO 1 --- [discovery-server] [nio-8761-exec-3] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status DOWN (replication=true)
+2026-11-19T00:20:18.299Z  WARN 1 --- [discovery-server] [a-EvictionTimer] c.n.e.registry.AbstractInstanceRegistry  : DS: Registry: expired lease for SERVICIO-PRODUCTOS/servicio-productos:productos-2
+2026-11-19T00:20:18.299Z  INFO 1 --- [discovery-server] [a-EvictionTimer] c.n.e.registry.AbstractInstanceRegistry  : Cancelled instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 (replication=false)
+2026-11-19T00:21:00.468Z  INFO 1 --- [discovery-server] [nio-8761-exec-7] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=false)
+2026-11-19T00:21:00.976Z  INFO 1 --- [discovery-server] [nio-8761-exec-9] c.n.e.registry.AbstractInstanceRegistry  : Registered instance SERVICIO-PRODUCTOS/servicio-productos:productos-2 with status UP (replication=true)
+
+# productos-2: apagado ordenado (docker compose stop)
+$ docker compose logs --no-log-prefix servicio-productos-2 | grep -E "Unregistering|Shutting down DiscoveryClient|Graceful"
+2026-11-19T00:19:56.518Z  INFO [] 1 --- [servicio-productos] [ionShutdownHook] o.s.c.n.e.s.EurekaServiceRegistry        : Unregistering application SERVICIO-PRODUCTOS with eureka with status DOWN
+2026-11-19T00:19:56.524Z  INFO [] 1 --- [servicio-productos] [ionShutdownHook] o.s.b.w.e.tomcat.GracefulShutdown        : Commencing graceful shutdown. Waiting for active requests to complete
+2026-11-19T00:19:56.528Z  INFO [] 1 --- [servicio-productos] [tomcat-shutdown] o.s.b.w.e.tomcat.GracefulShutdown        : Graceful shutdown complete
+2026-11-19T00:19:56.585Z  INFO [] 1 --- [servicio-productos] [ionShutdownHook] com.netflix.discovery.DiscoveryClient    : Shutting down DiscoveryClient ...
