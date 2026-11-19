@@ -4,6 +4,21 @@ Cada escenario debe ejecutarse y documentarse con evidencia funcional (salidas d
 
 Responsable de cada escenario indicado entre paréntesis.
 
+## Resumen
+
+| Escenario | Responsable | Resultado | Evidencia |
+|---|---|---|---|
+| [P01 · Descubrimiento dinámico](#p01--descubrimiento-dinámico-integrante-1) | Integrante 1 | 4 instancias `UP` en Eureka, rutas `lb://` y solicitudes `200` por nombre lógico | [P01](evidencias/P01/) |
+| [P02 · Balanceo HTTP](#p02--balanceo-http-integrante-1) | Integrante 1 | 100 de 100 solicitudes exitosas, repartidas 47 / 53 (300 solicitudes: 149 / 151) | [P02](evidencias/P02/) |
+| [P03 · Fallo de instancia](#p03--fallo-de-instancia-integrante-1) | Integrante 1 | Con `kill`: 8 a 11 errores `500` de ~130 solicitudes en los ~27 s siguientes y ninguno después; con `stop`: 0 errores. La instancia vuelve en 15 a 21 s | [P03](evidencias/P03/) |
+| [P04 · Comunicación entre servicios](#p04--comunicación-entre-servicios-integrante-3) | Integrante 3 | 16 de 16 comprobaciones: pedido `201`, errores `404`, `409` y `503`, y recuperación | [P04](evidencias/P04/) |
+| [P05 · Enrutamiento de base de datos](#p05--enrutamiento-de-base-de-datos-integrante-2) | Integrante 2 | 4 de 4 escrituras al primario; 10 lecturas repartidas 5 y 5 entre las réplicas | [P05](evidencias/P05/) |
+| [P06 · Fallo de réplica](#p06--fallo-de-réplica-postgresql-integrante-2) | Integrante 2 | 30 de 30 lecturas `200` con `replica1` detenida; excluida a los 6 s | [P06](evidencias/P06/) |
+| [P07 · Consistencia de lectura](#p07--consistencia-de-lectura-integrante-2) | Integrante 2 | 20 de 20 lecturas críticas desde el primario; con la réplica pausada, la ordinaria no ve el dato y la crítica sí | [P07](evidencias/P07/) |
+| [P08 · Recuperación de réplica](#p08--recuperación-de-réplica-integrante-2) | Integrante 2 | 5 de 5 pedidos recuperados en `replica1`; reincorporada a la rotación a los 12 s | [P08](evidencias/P08/) |
+
+Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las limitaciones observadas y las mejoras posibles están al final del informe.
+
 ## P01 · Descubrimiento dinámico (Integrante 1)
 
 - **Objetivo:** verificar que las instancias se registran en Eureka y pueden localizarse por nombre lógico.
@@ -103,7 +118,7 @@ Responsable de cada escenario indicado entre paréntesis.
   - **Por qué hay errores transitorios.** Al matar el proceso, Eureka no se entera hasta que vence su lease (10 s configurados; en la práctica Eureka la retiró del registro entre +24.5 y +27.4 s) y el Gateway conserva la instancia en su lista un rato más. Durante ese tiempo el LoadBalancer sigue eligiendo `productos-2` en ~la mitad de las solicitudes y la conexión no responde: cada intento espera el timeout de conexión de 2 s. Con 2 reintentos y esperas de 50 y 100 ms, una solicitud cuyos tres intentos caen en la instancia caída tarda 2 + 0.05 + 2 + 0.1 + 2 ≈ 6.15 s y termina en `500`: es lo que se midió (6.17–6.30 s). Si el reintento cae en `productos-1`, la solicitud se recupera pero tarda ~2 s más (una instancia caída en el primer intento) o ~4.2 s (dos): las 40–46 solicitudes "lentas" exitosas de cada corrida. Es decir, el reintento rescató entre el 78 % y el 85 % (44 de 53, 46 de 54 y 40 de 51) de las solicitudes que primero cayeron en la instancia caída, pero no todas. Que un reintento vuelva a caer en la instancia caída es esperable con carga concurrente: no se verificó la causa, pero es compatible con que las solicitudes en vuelo compartan el mismo contador del round-robin y su reintento no avance de forma estricta hacia la otra instancia.
   - **Los tiempos coinciden con lo documentado.** Eureka expulsó la instancia a los +24.5, +27.4 y +25.8 s (documentado: ~24 s; el rango observado es algo mayor, de 24.5 a 27.4 s, con el muestreo de 1 s incluido). El Gateway siguió eligiendo la instancia caída hasta +30.3–30.7 s (última solicitud rescatada), dentro de los ~35 s de peor caso. Los errores terminaron antes (+22.4 a +26.7 s) porque para fallar hacen falta tres intentos seguidos en la instancia caída; los rescates por reintento duraron hasta el final de la ventana. En resumen: el último error ocurrió entre +22.4 y +26.7 s y el Gateway dejó de elegir la instancia caída, como máximo, a los +30.7 s. El primer error apareció entre +0.9 y +8.5 s: depende del azar de qué solicitudes caen en la instancia caída, y el comando `kill` mismo tarda 2–3 s en volver.
   - **No se exige cero errores en la interrupción** y no los hubo: 8–11 solicitudes de ~130 en la ventana (≈ 6–9 %), todas durante los primeros ~27 s, y ninguna antes ni después. Ninguna escritura entró en la prueba; las escrituras (`POST`/`PUT`/`PATCH`) no se reintentan y fallarían más a menudo en esa ventana (ver `docs/arquitectura.md`).
-  - **`kill` frente a `stop`.** Con `stop` el servicio avisó a Eureka (`Unregistering ... with status DOWN`), el Gateway dejó de enviarle tráfico en ~5 s y no hubo errores; con `kill`, en cambio, hubo 8–11 errores y el Gateway tardó ~30 s. Pero **en el registro de Eureka la instancia detenida con `stop` siguió figurando `DOWN` hasta los +25.4 s** (la retiró la expiración del lease, no una baja inmediata). `docs/arquitectura.md` y el README dicen que la parada ordenada se da de baja de inmediato / en ~10 s; lo observado es que se **marca `DOWN` de inmediato** (suficiente para que el Gateway la deje de usar) pero **sale del registro a los ~25 s**. No se investigó la causa.
+  - **`kill` frente a `stop`.** Con `stop` el servicio avisó a Eureka (`Unregistering ... with status DOWN`), el Gateway dejó de enviarle tráfico en ~5 s y no hubo errores; con `kill`, en cambio, hubo 8–11 errores y el Gateway tardó ~30 s. Pero **en el registro de Eureka la instancia detenida con `stop` siguió figurando `DOWN` hasta los +25.4 s** (la retiró la expiración del lease, no una baja inmediata). `docs/arquitectura.md` y el README decían que la parada ordenada se daba de baja de inmediato / en ~10 s; esta prueba lo corrigió: la instancia se **marca `DOWN` de inmediato** (suficiente para que el Gateway la deje de usar) pero **sale del registro a los ~25 s**. No se investigó la causa.
   - **Recuperación.** Al volver a arrancar, la instancia se registró sola: `UP` en Eureka a los 15–21 s del `start` (arranque de Spring Boot y primer latido) y recibiendo tráfico por el Gateway a los 19–28 s (compatible con hasta 5 s de consulta del registro más 5 s de la caché del LoadBalancer); después el reparto volvió a ser ~50/50.
   - **Limitaciones de la prueba.** El generador de carga es un script `bash` que lanza un proceso `curl` por solicitud; en Git Bash sobre Windows eso lo hace más lento que 5 solicitudes/s (se lograron entre ~3.5 y ~5 por segundo: 100 solicitudes en los primeros 20 s en la corrida 1, 69–71 en las otras). Eureka se sondea una vez por segundo, así que sus tiempos tienen ±1 s de resolución. Son tres corridas con `kill` en un solo equipo, sin repetir en otro entorno. El ritmo real de la carga (el script lo imprime al final) y el tiempo que tarda `docker compose kill` en volver dependen de la máquina: aquí tardó entre 1.8 y 3.0 s, pero en una corrida de verificación hecha durante la revisión del PR, en otra ejecución, tardó 11.4 s y Eureka retiró la instancia a +30.8 s desde el lanzamiento del comando. Por eso los tiempos de este informe son una referencia y no un valor fijo.
 
@@ -255,6 +270,30 @@ Responsable de cada escenario indicado entre paréntesis.
 
 ## Limitaciones observadas
 
+### Descubrimiento y balanceo (P01-P03)
+
+- **Errores transitorios al caer una instancia sin avisar (P03, `kill`):** 8 a 11 solicitudes `500` de ~130 (6 a 9 %) en los ~27 s siguientes al fallo, y ninguna antes ni después. Cada una tarda ~6,2 s, porque agota tres intentos de 2 s contra la instancia caída. El reintento de los `GET` rescató entre el 78 % y el 85 % de las solicitudes que primero cayeron en ella.
+- **Ventana de detección:** Eureka retiró la instancia a los 24,5 a 27,4 s, y el Gateway siguió eligiéndola hasta ~30,7 s.
+- **Las escrituras no se reintentan:** P03 solo usó `GET`. Un `POST`, `PUT` o `PATCH` que caiga en la instancia caída falla y el cliente debe reintentarlo (ver [arquitectura](arquitectura.md#gateway-rutas-y-balanceo)).
+- **Parada ordenada y registro:** con `docker compose stop` la instancia queda `DOWN` a los ~2 s y el Gateway deja de usarla, pero Eureka la retira del registro más tarde: a los ~25 s en P03 y antes de 21 s en P04 (con las dos instancias detenidas). No se investigó la causa.
+- **Recuperación:** una instancia que vuelve tarda 15 a 21 s en figurar `UP` y 19 a 28 s en recibir tráfico.
+- **Reparto no estrictamente igual:** 47 / 53 con 100 solicitudes (converge a 49,7 / 50,3 con 300). No se investigó la causa.
+- **Autopreservación de Eureka desactivada:** se hizo solo para el laboratorio, para que el registro no conserve instancias muertas durante las demostraciones. En un despliegue real se mantendría activa.
+- **Alcance de las mediciones:** una sola máquina, con un generador de carga en `bash` sobre Git Bash en Windows que logra ~3,5 a 5 solicitudes por segundo. Los tiempos son una referencia y no un valor fijo.
+
+### Comunicación entre servicios (P04)
+
+- **Sin transacciones distribuidas:** `servicio-pedidos` descuenta el stock en `servicio-productos` antes de guardar el pedido en su propia base. Si el guardado falla después de descontar, el stock queda descontado sin pedido (se registra un `ERROR` y la corrección es manual). Si el `PATCH` de stock agota el tiempo, el resultado es incierto: `servicio-productos` pudo descontar y `servicio-pedidos` responde `503` sin crear el pedido. P04 no provocó estos fallos; el comportamiento esperado está en [docs/api.md](api.md#limitación-sin-transacciones-distribuidas).
+- **Cancelar no repone stock:** `servicio-productos` solo ofrece una operación para descontar.
+- **Verificación previa con datos atrasados:** `servicio-pedidos` consulta el producto con un `GET` que atiende una réplica. Si está atrasada, podría rechazar un pedido que sí tenía stock, o no ver un producto recién creado (por eso el script de P04 espera 2 s tras crearlo). El `PATCH` de stock va al primario y es la validación definitiva, así que no se vende más de lo que hay.
+- **`503` lento al principio:** justo después de detener `servicio-productos`, el LoadBalancer aún conserva sus instancias y la respuesta tarda ~2 s (2,06 s en P04); cuando el registro ya no las tiene, responde al instante. El `PATCH` de stock no se reintenta, así que el cliente debe reintentar el pedido.
+
+### Generales
+
+- **Sin alta disponibilidad:** Eureka, el Gateway y `servicio-pedidos` tienen una sola instancia, y PostgreSQL tiene un único primario. Si cae cualquiera de ellos, el sistema pierde esa función.
+- **Sin seguridad:** el Gateway no autentica y no hay TLS. Es un laboratorio, no un despliegue de producción.
+- **Sin integración continua:** el repositorio no ejecuta las verificaciones automáticamente (`./mvnw verify`, `docker compose config`); se ejecutan a mano antes de cada PR.
+
 ### Persistencia (P05-P08)
 
 - **Retención de WAL:**
@@ -266,3 +305,19 @@ Responsable de cada escenario indicado entre paréntesis.
 - **Lecturas ordinarias con datos atrasados:** una lectura ordinaria puede no ver una escritura reciente (contraste de P07). El retraso aceptado está acotado por `max-lag` (10 s). Las lecturas que no lo toleran deben ser críticas.
 - **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde el streaming, su retraso medido no crece y seguiría en la rotación con datos cada vez más antiguos. En este despliegue solo ocurre si cae el primario.
 - **Sin failover:** si cae el primario, las escrituras y las lecturas críticas fallan. No hay promoción automática de una réplica (el enunciado no la exige).
+
+## Mejoras posibles
+
+| Mejora | Limitación que atiende |
+|---|---|
+| Circuit breaker y timeouts más cortos (por ejemplo, Resilience4j) en el Gateway y en `servicio-pedidos`, para no esperar ~6 s por una instancia caída | Errores transitorios y `503` lento |
+| Clave de idempotencia en `POST /api/pedidos` y en el `PATCH` de stock, para poder reintentar sin descontar dos veces | Las escrituras no se reintentan |
+| Saga u *outbox* con compensaciones: reponer el stock cuando falle el guardado del pedido o se cancele | Sin transacciones distribuidas; cancelar no repone stock |
+| Operación en `servicio-productos` para devolver stock | Cancelar no repone stock |
+| Permitir que la consulta de stock que hace `servicio-pedidos` lea del primario | Verificación previa con datos atrasados |
+| Eureka en clúster y varias instancias del Gateway y de `servicio-pedidos` detrás de un balanceador | Sin alta disponibilidad |
+| Failover automático de PostgreSQL (por ejemplo, Patroni o repmgr) y detección de una réplica que perdió el streaming | Sin failover; réplica desconectada del primario |
+| Investigar por qué una instancia detenida con `stop` sigue ~25 s en el registro y ajustar la baja ordenada | Parada ordenada y registro |
+| Trazas distribuidas y métricas (Micrometer Tracing con Zipkin, Prometheus) además de los logs con `X-Request-Id` | Alcance de las mediciones |
+| Autenticación en el Gateway, TLS y gestión de secretos | Sin seguridad |
+| GitHub Actions que ejecute `./mvnw verify` y `docker compose config` en cada PR, y pruebas de integración con Testcontainers | Sin integración continua |
