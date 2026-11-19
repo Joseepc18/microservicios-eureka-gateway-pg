@@ -167,6 +167,16 @@ Si un puerto del host ya está en uso (`ports are not available`), cambiar el va
 
 Resultados y evidencias en [docs/informe-pruebas.md](docs/informe-pruebas.md).
 
+### P04 · Comunicación entre servicios
+
+Requiere el sistema completo levantado (`docker compose up -d --build --wait`) y se ejecuta desde la raíz del repositorio con Bash (en Windows, Git Bash):
+
+```bash
+scripts/p04-comunicacion.sh    # pedido por el Gateway → servicio-productos; errores 404, 409 y 503
+```
+
+Crea pedidos, sigue cada solicitud por su `X-Request-Id` en los logs de ambos servicios y detiene las dos instancias de `servicio-productos` para provocar el `503` (las vuelve a iniciar al terminar, incluso si el script falla). Guarda la salida y las trazas en `docs/evidencias/P04/`. Usa las mismas variables que los scripts de persistencia, más `EUREKA` para la URL de Eureka.
+
 ### P05–P08 · Persistencia
 
 Requieren el sistema completo levantado (`docker compose up -d --build --wait`) y se ejecutan desde la raíz del repositorio con Bash (en Windows, Git Bash). Cada script provoca su escenario, imprime el resultado (`PXX OK` o `PXX FALLA`) y guarda la salida y el log de enrutamiento de `servicio-pedidos` en `docs/evidencias/PXX/`. Ejecutarlos en este orden:
