@@ -37,7 +37,7 @@ Versiones: Java 21, Spring Boot 3.5.16 y Spring Cloud 2025.0.3 (`2025.0.x` es el
 
 ## Eureka: configuración y tiempos de detección
 
-`discovery-server` corre en el puerto `8761` como servidor único (`register-with-eureka=false`, `fetch-registry=false`). Dashboard: `http://localhost:8761`. Registro en JSON: `http://localhost:8761/eureka/apps` (con el header `Accept: application/json`). Salud: `/actuator/health`.
+`discovery-server` corre en el puerto `8761` como servidor único (`register-with-eureka=false`, `fetch-registry=false`). Dashboard: `http://127.0.0.1:8761`. Registro en JSON: `http://127.0.0.1:8761/eureka/apps` (con el header `Accept: application/json`). Salud: `/actuator/health`.
 
 Tiempos ajustados para que una caída sea visible durante la demo (los valores por defecto de Eureka son mucho mayores):
 
@@ -52,11 +52,11 @@ Tiempos ajustados para que una caída sea visible durante la demo (los valores p
 
 La autopreservación (`enable-self-preservation`) está desactivada. Cuando está activa, Eureka suspende la expulsión de instancias si las renovaciones caen por debajo de un umbral (por ejemplo, si cae a la vez un grupo grande de instancias). Se desactiva solo en este laboratorio para que el registro no conserve instancias muertas durante las demos; en producción se mantendría activada. Con una sola instancia caída la expulsión ocurre igualmente a los ~24 s, tanto con la autopreservación activa como desactivada (comprobado en la revisión).
 
-**Medición:** al terminar de forma abrupta una instancia de `servicio-productos` (sin darse de baja), Eureka la expulsó del registro a los ~24 s. Una parada ordenada (`docker compose stop`) sí se da de baja de inmediato.
+**Medición:** al terminar de forma abrupta una instancia de `servicio-productos` (`docker compose kill`, sin darse de baja), Eureka la expulsó del registro a los ~24-27 s (tres corridas de P03: 24,5, 27,4 y 25,8 s). Una parada ordenada (`docker compose stop`) **no la retira de inmediato**: la instancia avisa a Eureka y queda marcada `DOWN` a los ~2 s, lo que basta para que el Gateway deje de usarla, pero sigue figurando en el registro hasta los ~25 s, cuando la retira la expiración del lease. No se investigó la causa.
 
-**Por qué ~24 s y no 10 s:** la expiración configurada es de 10 s, pero Eureka la aplica con un margen adicional (en la práctica cerca del doble, ~20 s) y después espera al siguiente ciclo de evicción (hasta 5 s) y a la caché de respuesta (3 s). Ese margen es un comportamiento conocido de Eureka que no se verificó leyendo su código; el valor de ~24 s es el medido.
+**Por qué ~24 s y no 10 s:** la expiración configurada es de 10 s, pero Eureka la aplica con un margen adicional (en la práctica cerca del doble, ~20 s) y después espera al siguiente ciclo de evicción (hasta 5 s) y a la caché de respuesta (3 s). Ese margen es un comportamiento conocido de Eureka que no se verificó leyendo su código; los valores de ~24-27 s son los medidos.
 
-**Ventana total hasta que el Gateway deja de enviar a la instancia caída** (peor caso): ~24 s del servidor + hasta 5 s de consulta del registro por el cliente + hasta 5 s de la caché del LoadBalancer, es decir, **~35 s**. Durante esa ventana el Gateway puede seguir enviando solicitudes a la instancia caída; por eso se esperan errores transitorios, que se analizan en P03.
+**Ventana total hasta que el Gateway deja de enviar a la instancia caída** (peor caso): ~24 s del servidor + hasta 5 s de consulta del registro por el cliente + hasta 5 s de la caché del LoadBalancer, es decir, **~35 s**. En las tres corridas de P03 el Gateway dejó de elegir la instancia caída a los ~30 s. Durante esa ventana el Gateway puede seguir enviando solicitudes a la instancia caída; por eso se esperan errores transitorios, que se analizan en P03.
 
 ## Gateway: rutas y balanceo
 
@@ -67,8 +67,8 @@ La autopreservación (`enable-self-preservation`) está desactivada. Cuando est�
 | `/api/productos/**` | `lb://servicio-productos` | `/productos/**` |
 | `/api/pedidos/**` | `lb://servicio-pedidos` | `/pedidos/**` |
 
-- **Reintentos:** solo `GET` (idempotente), hasta 2 reintentos ante `IOException`, timeout o respuestas `502`, `503` y `504`, con espera creciente (50–500 ms). Un `500` de la aplicación no se reintenta, para no repetir un `GET` que falla por un error del servicio. Los `POST`, `PUT` y `PATCH` no se reintentan para no duplicar escrituras. Mientras Eureka no expulsa una instancia caída, el reintento hace que el `GET` pase a la otra instancia.
-- **Errores transitorios esperados (P03):** durante la ventana de detección de una instancia caída (~35 s en el peor caso, ver la sección de Eureka), los `GET` se recuperan por reintento, pero las escrituras (`POST`, `PUT`, `PATCH`) que el LoadBalancer dirija a la instancia caída fallan (se observó `500` alternado) y el cliente debe reintentarlas. Si no queda ninguna instancia registrada, el Gateway responde `503`.
+- **Reintentos:** solo `GET` (idempotente), hasta 2 reintentos, con espera creciente (50–500 ms), ante `IOException`, timeout y cualquier respuesta `5xx`: el filtro `Retry` reintenta por defecto toda la serie `SERVER_ERROR` y la suma a los `statuses` configurados (`502`, `503` y `504`). Por eso un `GET` que falla con `500` por un error del servicio también se repite (se observó con el primario detenido: `GET /api/pedidos/1` devolvió `500` y `servicio-pedidos` registró 3 intentos con el mismo `X-Request-Id`). Los demás métodos (`POST`, `PUT` y `PATCH`) no se reintentan, para no duplicar escrituras. Mientras Eureka no expulsa una instancia caída, el reintento hace que el `GET` pase a la otra instancia.
+- **Errores transitorios esperados (P03):** durante la ventana de detección de una instancia caída (~35 s en el peor caso, ver la sección de Eureka), los `GET` se recuperan por reintento en su mayoría, pero no todos: en P03 hubo 9, 8 y 11 errores `500` sobre 138, 134 y 130 solicitudes en tres corridas, porque un `GET` solo falla si sus tres intentos caen en la instancia caída (cada uno espera el timeout de conexión de 2 s). Las escrituras (`POST`, `PUT`, `PATCH`) que el LoadBalancer dirija a la instancia caída fallan (se observó `500` alternado) y el cliente debe reintentarlas. Con una parada ordenada (`stop`) no hubo errores. Si no queda ninguna instancia registrada, el Gateway responde `503`.
 - **Un `Retry` por ruta se suma al global:** el filtro `Retry` está en `default-filters`. Si se agrega otro `Retry` dentro de una ruta, no reemplaza al global, se acumula.
 - **Timeouts:** conexión 2 s, respuesta 10 s.
 - **Log por solicitud** (`RequestLoggingFilter`): `GW method=GET path=/api/productos/ping route=servicio-productos target=host:8082 instanceId=productos-2 status=200 ms=12`. `target` es la instancia elegida por el LoadBalancer; si el servicio responde con el header `X-Instance-Id`, aparece en `instanceId`. Es la base de la evidencia de P02 y P03. En un reintento se registra la solicitud una sola vez, con el destino del último intento.
@@ -123,21 +123,20 @@ Cuando una réplica se detiene, el primario tiene que conservar el WAL que esa r
 Estado de los slots (cuánto WAL retiene cada uno y si sigue siendo válido):
 
 ```bash
-docker compose exec primary psql -U admin -d laboratorio \
-  -c "SELECT slot_name, active, wal_status, safe_wal_size, restart_lsn FROM pg_replication_slots;"
+docker compose exec primary sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT slot_name, active, wal_status, safe_wal_size, restart_lsn FROM pg_replication_slots;"'
 ```
 
 `wal_status` es `reserved` en condiciones normales, `extended` o `unreserved` si se acerca al tope, y `lost` si el slot se invalidó. Una réplica con el slot en `lost` no puede ponerse al día y hay que reconstruirla desde una copia nueva. Se reconstruye así (borra solo el volumen de esa réplica; el slot sigue existiendo en el primario):
 
 ```bash
 docker compose rm -sf replica1
-docker volume rm microservicios-eureka-gateway-pg_replica1_data
-docker compose exec primary psql -U admin -d laboratorio \
-  -c "SELECT pg_drop_replication_slot('replica1'); SELECT pg_create_physical_replication_slot('replica1', true);"
+docker volume ls                        # buscar el volumen de replica1: <proyecto>_replica1_data
+docker volume rm <proyecto>_replica1_data
+echo "SELECT pg_drop_replication_slot('replica1'); SELECT pg_create_physical_replication_slot('replica1', true);" | docker compose exec -T primary sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 docker compose up -d replica1
 ```
 
-(El prefijo del volumen es el nombre del proyecto de Compose; `docker volume ls` lo muestra.)
+`<proyecto>` es el nombre del proyecto de Compose, que normalmente es el nombre de la carpeta del clon (`docker volume ls` muestra el nombre completo). Los mismos pasos, con su explicación, están en el [README](../README.md#una-réplica-postgresql).
 
 Cada réplica se conecta con `application_name` igual a su slot, así que `pg_stat_replication` muestra `replica1` y `replica2` en lugar de `walreceiver`.
 
@@ -156,7 +155,7 @@ El healthcheck de las réplicas usa el socket local con el usuario `POSTGRES_USE
 
 ```bash
 docker compose down -v
-docker compose up -d
+docker compose up -d --build --wait
 ```
 
 ## Puertos
@@ -172,10 +171,36 @@ docker compose up -d
 | PostgreSQL réplica 1 | 5433 (interno `replica1:5432`) |
 | PostgreSQL réplica 2 | 5434 (interno `replica2:5432`) |
 
+## Redes de Compose
+
+| Red | Quién está conectado | Para qué |
+|---|---|---|
+| `red_app` | `api-gateway`, `discovery-server`, `servicio-productos-1`, `servicio-productos-2`, `servicio-pedidos` | Tráfico HTTP: Gateway a servicios, servicios a Eureka y `servicio-pedidos` a `servicio-productos` |
+| `red_datos` | `servicio-productos-1`, `servicio-productos-2`, `servicio-pedidos`, `primary`, `replica1`, `replica2` | Tráfico hacia PostgreSQL y replicación entre el primario y las réplicas |
+
+Los tres servicios de negocio están en las dos redes. El Gateway y Eureka no están en `red_datos`, y PostgreSQL no está en `red_app`: el Gateway no puede llegar a la base de datos. Cada servicio anuncia en Eureka su nombre de servicio de Compose (`EUREKA_INSTANCE_HOSTNAME`) y no una IP, porque un contenedor con dos redes tiene dos IP y la elegida podría ser la de `red_datos`, inalcanzable para el Gateway.
+
 ## Diagrama
 
-_Pendiente: se agregará en esta carpeta (`docs/diagrama-arquitectura.*`) y se referenciará desde el README._
+Los diagramas (componentes con puertos y redes, enrutamiento de persistencia y secuencia de la creación de un pedido) están en [diagrama-arquitectura.md](diagrama-arquitectura.md). El de componentes también está en el [README](../README.md#arquitectura).
 
 ## Flujo de una operación de negocio
 
-_Pendiente: se documentará con la secuencia completa de una creación de pedido (Gateway → pedidos → productos → PostgreSQL)._
+Creación de un pedido (`POST /api/pedidos`), la operación que cruza todos los componentes. La secuencia dibujada está en [diagrama-arquitectura.md](diagrama-arquitectura.md#secuencia-crear-un-pedido).
+
+1. **Cliente a Gateway.** `POST /api/pedidos` con `{"productoId": 1, "cantidad": 2}`. La ruta `/api/pedidos/**` coincide con `lb://servicio-pedidos`; el Gateway quita el prefijo `/api` y elige una instancia registrada en Eureka con su copia local del registro. Eureka no interviene en cada solicitud.
+2. **Gateway a `servicio-pedidos`.** Llega `POST /pedidos`. El `POST` no se reintenta en el Gateway.
+3. **`servicio-pedidos` a `servicio-productos`: consulta.** `GET /productos/{id}` a `http://servicio-productos`, un nombre lógico que Spring Cloud LoadBalancer resuelve con el registro de Eureka y reparte entre las dos instancias. La instancia lee el producto en una réplica (lectura ordinaria, `readOnly`). Si no existe responde `404`; si no hay instancias o no responde, `servicio-pedidos` responde `503`.
+4. **Validación de stock.** Si el stock leído es menor que la cantidad, `servicio-pedidos` responde `409` sin modificar nada.
+5. **`servicio-pedidos` a `servicio-productos`: descuento.** `PATCH /productos/{id}/stock`. La instancia ejecuta una sola sentencia atómica (`UPDATE ... WHERE stock >= cantidad`) en el **primario**, así que dos instancias que descuenten a la vez nunca dejan el stock en negativo. Es la verificación definitiva: si otra solicitud consumió el stock, responde `409`.
+6. **Guardado del pedido.** `servicio-pedidos` inserta el pedido en `pedidos_db` en el **primario** (escritura) con el total calculado (`precio × cantidad`) y responde `201` con `Location`. Entre las llamadas HTTP y el guardado no mantiene ninguna transacción abierta.
+7. **Consulta posterior.** `GET /api/pedidos/{id}` se atiende siempre desde el primario (lectura crítica, `@ReadFromPrimary`), porque el cliente lo consulta justo después de crear el pedido y una réplica con retraso podría no tenerlo. El listado `GET /api/pedidos` sí se reparte entre las réplicas.
+
+Qué pasa cuando algo falla (detalle en [api.md](api.md)):
+
+- **Antes del descuento** (producto inexistente, stock insuficiente, `servicio-productos` caído): no se modifica nada.
+- **Después del descuento**, si falla el guardado: el stock queda descontado sin pedido. No hay transacciones distribuidas; se registra un `ERROR` con el `X-Request-Id` y la corrección es manual.
+- **Una instancia de `servicio-productos` caída:** mientras Eureka no la expulsa (~35 s en el peor caso para que `servicio-pedidos` deje de elegirla) algunas solicitudes pueden recibir `503` y el cliente debe reintentarlas. `servicio-pedidos` no reintenta: repetir el `PATCH` podría descontar dos veces.
+- **Una réplica PostgreSQL caída:** las lecturas continúan por la otra réplica (o por el primario si no queda ninguna); el cliente no ve errores.
+
+El mismo `X-Request-Id` viaja del cliente a `servicio-pedidos` y de ahí a `servicio-productos`, de modo que una solicitud se sigue en los logs de ambos servicios.
