@@ -15,8 +15,12 @@ Content-Type: application/json
   "cantidad": 4
 }
 
-### Obtener el pedido recién creado (lectura crítica: se atiende desde el primario)
+### Obtener el pedido recién creado (lectura crítica: ?consistencia=fuerte se atiende desde el primario)
 # Esperado: 200
+GET {{gateway}}/api/pedidos/{{crearPedido.response.body.$.id}}?consistencia=fuerte
+
+### Obtener el mismo pedido con una lectura ordinaria (se atiende en una réplica)
+# Esperado: 200 (si la réplica ya aplicó el WAL; justo después de crearlo podría ser 404)
 GET {{gateway}}/api/pedidos/{{crearPedido.response.body.$.id}}
 
 ### Listar pedidos

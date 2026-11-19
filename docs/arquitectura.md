@@ -194,7 +194,7 @@ Creación de un pedido (`POST /api/pedidos`), la operación que cruza todos los 
 4. **Validación de stock.** Si el stock leído es menor que la cantidad, `servicio-pedidos` responde `409` sin modificar nada.
 5. **`servicio-pedidos` a `servicio-productos`: descuento.** `PATCH /productos/{id}/stock`. La instancia ejecuta una sola sentencia atómica (`UPDATE ... WHERE stock >= cantidad`) en el **primario**, así que dos instancias que descuenten a la vez nunca dejan el stock en negativo. Es la verificación definitiva: si otra solicitud consumió el stock, responde `409`.
 6. **Guardado del pedido.** `servicio-pedidos` inserta el pedido en `pedidos_db` en el **primario** (escritura) con el total calculado (`precio × cantidad`) y responde `201` con `Location`. Entre las llamadas HTTP y el guardado no mantiene ninguna transacción abierta.
-7. **Consulta posterior.** `GET /api/pedidos/{id}` se atiende siempre desde el primario (lectura crítica, `@ReadFromPrimary`), porque el cliente lo consulta justo después de crear el pedido y una réplica con retraso podría no tenerlo. El listado `GET /api/pedidos` sí se reparte entre las réplicas.
+7. **Consulta posterior.** `GET /api/pedidos/{id}?consistencia=fuerte` se atiende desde el primario (lectura crítica, `@ReadFromPrimary`): es la que usa el cliente justo después de crear el pedido, porque una réplica con retraso podría no tenerlo. Sin el parámetro, `GET /api/pedidos/{id}` es una lectura ordinaria y, como el listado `GET /api/pedidos`, se reparte entre las réplicas.
 
 Qué pasa cuando algo falla (detalle en [api.md](api.md)):
 

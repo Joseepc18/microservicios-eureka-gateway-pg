@@ -60,12 +60,23 @@ public class PedidoService {
     }
 
     /**
-     * Lectura crítica: se atiende desde el primario, no desde una réplica, porque el cliente suele
-     * consultar el pedido justo después de crearlo y una réplica con retraso aún podría no tenerlo.
+     * Lectura ordinaria: se atiende en una réplica. Acepta consistencia eventual: un pedido creado
+     * hace un instante podría no estar todavía en la réplica (404). Para leer lo recién escrito,
+     * {@link #obtenerDesdePrimario}.
+     */
+    @Transactional(readOnly = true)
+    public Pedido obtener(Long id) {
+        return repositorio.findById(id).orElseThrow(() -> new PedidoNoEncontradoException(id));
+    }
+
+    /**
+     * Lectura crítica: se atiende desde el primario aunque sea de solo lectura, porque debe ver una
+     * escritura anterior (por ejemplo, consultar el pedido justo después de crearlo). Es la que usa
+     * {@code GET /pedidos/{id}?consistencia=fuerte}.
      */
     @ReadFromPrimary
     @Transactional(readOnly = true)
-    public Pedido obtener(Long id) {
+    public Pedido obtenerDesdePrimario(Long id) {
         return repositorio.findById(id).orElseThrow(() -> new PedidoNoEncontradoException(id));
     }
 

@@ -214,12 +214,15 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 
 - **Objetivo:** crear un registro y consultarlo inmediatamente mediante una operación crítica dirigida al primario.
 - **Procedimiento:** ejecutar `scripts/p07-consistencia.sh`.
-  1. **Escritura y lectura crítica, 20 veces:** crear un pedido (`POST /api/pedidos`) y consultarlo en ese mismo instante con `GET /api/pedidos/{id}`. Esa consulta es la operación crítica de `servicio-pedidos` (`PedidoService.obtener`, con `@ReadFromPrimary`).
-  2. **Contraste:** pausar el replay de WAL en las réplicas en marcha (`pg_wal_replay_pause()`) para provocar retraso. Crear un pedido y consultarlo con la lectura crítica y con la ordinaria (`GET /api/pedidos`, en réplica). Después, reanudar el replay (`pg_wal_replay_resume()`) y repetir la lectura ordinaria.
+  1. **Escritura y lectura crítica, 20 veces:** crear un pedido (`POST /api/pedidos`) y consultarlo en ese mismo instante con `GET /api/pedidos/{id}?consistencia=fuerte`. Esa consulta es la lectura crítica de `servicio-pedidos` (`PedidoService.obtenerDesdePrimario`, con `@ReadFromPrimary`).
+  2. **Contraste:** pausar el replay de WAL en las réplicas en marcha (`pg_wal_replay_pause()`) para provocar retraso. Crear un pedido y consultarlo con la lectura crítica y con la ordinaria del mismo pedido (`GET /api/pedidos/{id}`, en réplica). Después, reanudar el replay (`pg_wal_replay_resume()`) y repetir la lectura ordinaria.
 
   Se ejecutó después de P06, con `replica1` detenida, así que el replay se pausó solo en `replica2`.
 - **Resultado esperado:** la lectura crítica encuentra el pedido las 20 veces y la atiende el primario (`read=critical`). En el contraste, la lectura ordinaria no ve el pedido hasta que la réplica aplica el WAL; la crítica sí lo ve.
 - **Resultado obtenido:** ejecución del 2026-11-18 a las 23:41:17 UTC.
+
+  > **Pendiente de actualizar:** esta ejecución es de la versión anterior, en la que `GET /api/pedidos/{id}` era siempre crítica y el contraste usaba el listado `GET /api/pedidos`. Hay que volver a ejecutar `scripts/p07-consistencia.sh` y reemplazar estos resultados.
+
   - **Lecturas críticas:** 20 de 20 respondieron `200` con el pedido recién creado. Las 20 las atendió `DB route=PRIMARY node=primary tx=read-only read=critical`.
   - **Contraste con `replica2` pausada:** el pedido 50 se creó a las 23:41:58.
     - La lectura crítica lo devolvió (`200`, en el primario).
@@ -235,7 +238,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 - **Evidencia:** [salida completa](evidencias/P07/salida.txt) y [log de enrutamiento](evidencias/P07/logs-servicio-pedidos.txt).
 - **Análisis:** la replicación es asíncrona, así que una réplica puede no tener todavía un dato recién escrito; el contraste lo muestra. **Política aplicada:**
   - **Lecturas ordinarias:** aceptan consistencia eventual. Las réplicas con más de 10 s de retraso (`max-lag`) salen de la rotación, así que ese retraso queda acotado.
-  - **Lecturas que deben ver una escritura anterior:** se declaran críticas y van al primario, que siempre tiene el dato. En el sistema, la única es consultar un pedido por id, que es lo que hace un cliente justo después de crearlo.
+  - **Lecturas que deben ver una escritura anterior:** se declaran críticas y van al primario, que siempre tiene el dato. En el sistema, el cliente la pide explícitamente con `GET /api/pedidos/{id}?consistencia=fuerte` (lo que hace justo después de crear un pedido); la misma consulta sin el parámetro es ordinaria y va a una réplica.
 
   La marca `@ReadFromPrimary` se aplica antes de que la transacción obtenga su conexión, y el log la distingue con `read=critical`.
 
