@@ -100,4 +100,20 @@ class ProductoServiceTests {
         assertThatThrownBy(() -> servicio.descontarStock(-1L, 1))
                 .isInstanceOf(ProductoNoEncontradoException.class);
     }
+
+    @Test
+    void reponerStockSumaLaCantidadDevuelta() {
+        Producto creado = servicio.crear(datos("Lámpara", 10));
+        servicio.descontarStock(creado.getId(), 4);
+
+        Producto resultado = servicio.reponerStock(creado.getId(), 4);
+
+        assertThat(resultado.getStock()).isEqualTo(10);
+    }
+
+    @Test
+    void reponerStockDeProductoInexistenteLanzaNoEncontrado() {
+        assertThatThrownBy(() -> servicio.reponerStock(-1L, 1))
+                .isInstanceOf(ProductoNoEncontradoException.class);
+    }
 }

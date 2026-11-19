@@ -284,7 +284,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 ### Comunicación entre servicios (P04)
 
 - **Sin transacciones distribuidas:** `servicio-pedidos` descuenta el stock en `servicio-productos` antes de guardar el pedido en su propia base. Si el guardado falla después de descontar, el stock queda descontado sin pedido (se registra un `ERROR` y la corrección es manual). Si el `PATCH` de stock agota el tiempo, el resultado es incierto: `servicio-productos` pudo descontar y `servicio-pedidos` responde `503` sin crear el pedido. P04 no provocó estos fallos; el comportamiento esperado está en [docs/api.md](api.md#limitación-sin-transacciones-distribuidas).
-- **Cancelar no repone stock:** `servicio-productos` solo ofrece una operación para descontar.
+- **Cancelar con `servicio-productos` caído:** cancelar un pedido repone su stock con una llamada a `servicio-productos`. Si no responde, el pedido vuelve a `CREADO` y se responde `503`. Si la llamada agota el tiempo después de reponer, un reintento de la cancelación podría reponer dos veces (ver [docs/api.md](api.md#limitación-sin-transacciones-distribuidas)).
 - **Verificación previa con datos atrasados:** `servicio-pedidos` consulta el producto con un `GET` que atiende una réplica. Si está atrasada, podría rechazar un pedido que sí tenía stock, o no ver un producto recién creado (por eso el script de P04 espera 2 s tras crearlo). El `PATCH` de stock va al primario y es la validación definitiva, así que no se vende más de lo que hay.
 - **`503` lento al principio:** justo después de detener `servicio-productos`, el LoadBalancer aún conserva sus instancias y la respuesta tarda ~2 s (2,06 s en P04); cuando el registro ya no las tiene, responde al instante. El `PATCH` de stock no se reintenta, así que el cliente debe reintentar el pedido.
 
@@ -312,8 +312,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 |---|---|
 | Circuit breaker y timeouts más cortos (por ejemplo, Resilience4j) en el Gateway y en `servicio-pedidos`, para no esperar ~6 s por una instancia caída | Errores transitorios y `503` lento |
 | Clave de idempotencia en `POST /api/pedidos` y en el `PATCH` de stock, para poder reintentar sin descontar dos veces | Las escrituras no se reintentan |
-| Saga u *outbox* con compensaciones: reponer el stock cuando falle el guardado del pedido o se cancele | Sin transacciones distribuidas; cancelar no repone stock |
-| Operación en `servicio-productos` para devolver stock | Cancelar no repone stock |
+| Saga u *outbox* con compensaciones: reponer el stock automáticamente cuando falle el guardado del pedido | Sin transacciones distribuidas |
 | Permitir que la consulta de stock que hace `servicio-pedidos` lea del primario | Verificación previa con datos atrasados |
 | Eureka en clúster y varias instancias del Gateway y de `servicio-pedidos` detrás de un balanceador | Sin alta disponibilidad |
 | Failover automático de PostgreSQL (por ejemplo, Patroni o repmgr) | Sin failover |
