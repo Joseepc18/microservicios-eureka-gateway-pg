@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -20,6 +21,13 @@ import ec.edu.upse.distribuidas.serviciopedidos.excepcion.ServicioProductosNoDis
 import ec.edu.upse.distribuidas.serviciopedidos.excepcion.StockInsuficienteException;
 import ec.edu.upse.distribuidas.serviciopedidos.repositorio.PedidoRepository;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -113,23 +121,80 @@ class PedidoServiceTests {
     }
 
     @Test
-    void cancelarCambiaElEstado() {
+    void cancelarCambiaElEstadoYReponeElStock() {
         when(productos.obtener(1L)).thenReturn(producto(10));
-        Pedido creado = servicio.crear(1L, 1);
+        Pedido creado = servicio.crear(1L, 3);
 
         Pedido cancelado = servicio.cancelar(creado.getId());
 
         assertThat(cancelado.getEstado()).isEqualTo(EstadoPedido.CANCELADO);
         assertThat(servicio.obtener(creado.getId()).getEstado()).isEqualTo(EstadoPedido.CANCELADO);
+        verify(productos).reponerStock(1L, 3);
     }
 
     @Test
-    void cancelarDosVecesLanzaConflicto() {
+    void cancelarDosVecesLanzaConflictoYReponeElStockUnaSolaVez() {
         when(productos.obtener(1L)).thenReturn(producto(10));
         Pedido creado = servicio.crear(1L, 1);
         servicio.cancelar(creado.getId());
 
         assertThatThrownBy(() -> servicio.cancelar(creado.getId())).isInstanceOf(PedidoNoCancelableException.class);
+        verify(productos, times(1)).reponerStock(1L, 1);
+    }
+
+    @Test
+    void siNoSePuedeReponerElStockElPedidoSigueCreado() {
+        when(productos.obtener(1L)).thenReturn(producto(10));
+        Pedido creado = servicio.crear(1L, 2);
+        doThrow(new ServicioProductosNoDisponibleException("timeout", null)).when(productos).reponerStock(1L, 2);
+
+        assertThatThrownBy(() -> servicio.cancelar(creado.getId()))
+                .isInstanceOf(ServicioProductosNoDisponibleException.class);
+
+        // Vuelve a CREADO para que el cliente pueda reintentar la cancelación.
+        assertThat(servicio.obtener(creado.getId()).getEstado()).isEqualTo(EstadoPedido.CREADO);
+    }
+
+    @Test
+    void siElProductoYaNoExisteElPedidoSeCancelaIgualmente() {
+        when(productos.obtener(1L)).thenReturn(producto(10));
+        Pedido creado = servicio.crear(1L, 2);
+        doThrow(new ProductoNoEncontradoException(1L)).when(productos).reponerStock(1L, 2);
+
+        assertThat(servicio.cancelar(creado.getId()).getEstado()).isEqualTo(EstadoPedido.CANCELADO);
+        assertThat(servicio.obtener(creado.getId()).getEstado()).isEqualTo(EstadoPedido.CANCELADO);
+    }
+
+    @Test
+    void solicitudesSimultaneasDeCancelacionReponenElStockUnaSolaVez() throws Exception {
+        when(productos.obtener(1L)).thenReturn(producto(10));
+        Pedido creado = servicio.crear(1L, 1);
+        int hilos = 8;
+        ExecutorService ejecutor = Executors.newFixedThreadPool(hilos);
+        CountDownLatch salida = new CountDownLatch(1);
+        List<Future<Boolean>> resultados = new ArrayList<>();
+        for (int i = 0; i < hilos; i++) {
+            resultados.add(ejecutor.submit(() -> {
+                salida.await();
+                try {
+                    servicio.cancelar(creado.getId());
+                    return true;
+                } catch (PedidoNoCancelableException e) {
+                    return false;
+                }
+            }));
+        }
+        salida.countDown();
+        int correctas = 0;
+        for (Future<Boolean> resultado : resultados) {
+            if (resultado.get(10, TimeUnit.SECONDS)) {
+                correctas++;
+            }
+        }
+        ejecutor.shutdown();
+
+        assertThat(correctas).isEqualTo(1);
+        verify(productos, times(1)).reponerStock(1L, 1);
     }
 
     @Test

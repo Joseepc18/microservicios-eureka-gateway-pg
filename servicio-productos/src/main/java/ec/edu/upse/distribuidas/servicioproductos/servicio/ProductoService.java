@@ -59,4 +59,13 @@ public class ProductoService {
         }
         return obtener(id);
     }
+
+    /** Repone stock (lo usa servicio-pedidos al cancelar un pedido); 404 si el producto no existe. */
+    @Transactional
+    public Producto reponerStock(Long id, int cantidad) {
+        if (repositorio.reponerStock(id, cantidad) == 0) {
+            throw new ProductoNoEncontradoException(id);
+        }
+        return obtener(id);
+    }
 }

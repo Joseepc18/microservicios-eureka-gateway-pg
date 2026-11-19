@@ -145,6 +145,32 @@ class ProductoControllerTests {
     }
 
     @Test
+    void reponerStockDevuelveProductoActualizado() throws Exception {
+        when(servicio.reponerStock(1L, 3)).thenReturn(new Producto("Cable HDMI", null, new BigDecimal("8.50"), 33));
+
+        mvc.perform(patch("/productos/1/stock/reponer").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cantidad\":3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stock").value(33));
+    }
+
+    @Test
+    void reponerStockDeProductoInexistenteDevuelve404() throws Exception {
+        when(servicio.reponerStock(9L, 1)).thenThrow(new ProductoNoEncontradoException(9L));
+
+        mvc.perform(patch("/productos/9/stock/reponer").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cantidad\":1}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void reponerStockConCantidadInvalidaDevuelve400() throws Exception {
+        mvc.perform(patch("/productos/1/stock/reponer").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cantidad\":0}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void descontarStockConCantidadInvalidaDevuelve400() throws Exception {
         mvc.perform(patch("/productos/1/stock").contentType(MediaType.APPLICATION_JSON).content("{\"cantidad\":0}"))
                 .andExpect(status().isBadRequest());

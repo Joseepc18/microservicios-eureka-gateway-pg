@@ -38,6 +38,10 @@ X-Request-Id: prueba-p04-1
 # Esperado: 200
 GET {{gateway}}/api/productos/2
 
-### Cancelar el pedido (no devuelve el stock)
+### Cancelar el pedido (repone su stock en servicio-productos)
 # Esperado: 200
 PATCH {{gateway}}/api/pedidos/{{crearPedido.response.body.$.id}}/cancelar
+
+### Comprobar que el stock del producto 2 volvió a subir tras la cancelación
+# Esperado: 200
+GET {{gateway}}/api/productos/2

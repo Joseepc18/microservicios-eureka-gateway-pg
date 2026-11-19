@@ -1,5 +1,6 @@
 package ec.edu.upse.distribuidas.serviciopedidos.servicio;
 
+import ec.edu.upse.distribuidas.persistencerouting.PrimaryRead;
 import ec.edu.upse.distribuidas.persistencerouting.ReadFromPrimary;
 import ec.edu.upse.distribuidas.serviciopedidos.cliente.ProductoDto;
 import ec.edu.upse.distribuidas.serviciopedidos.cliente.ProductosClient;
@@ -7,6 +8,7 @@ import ec.edu.upse.distribuidas.serviciopedidos.dominio.EstadoPedido;
 import ec.edu.upse.distribuidas.serviciopedidos.dominio.Pedido;
 import ec.edu.upse.distribuidas.serviciopedidos.excepcion.PedidoNoCancelableException;
 import ec.edu.upse.distribuidas.serviciopedidos.excepcion.PedidoNoEncontradoException;
+import ec.edu.upse.distribuidas.serviciopedidos.excepcion.ProductoNoEncontradoException;
 import ec.edu.upse.distribuidas.serviciopedidos.excepcion.StockInsuficienteException;
 import ec.edu.upse.distribuidas.serviciopedidos.repositorio.PedidoRepository;
 import java.math.BigDecimal;
@@ -74,15 +76,53 @@ public class PedidoService {
         return repositorio.findAll();
     }
 
-    /** Solo cambia el estado a CANCELADO; servicio-productos no ofrece una operación para devolver stock. */
-    @Transactional
+    /**
+     * Cancela un pedido y repone su stock en servicio-productos.
+     *
+     * <ol>
+     *   <li>Lee el pedido en el primario (lectura crítica): puede haberse creado hace un instante.</li>
+     *   <li>Lo pasa de CREADO a CANCELADO con una sentencia condicional: si dos solicitudes lo
+     *       cancelan a la vez, solo una lo consigue y solo esa repone el stock.</li>
+     *   <li>Repone el stock con una llamada HTTP a servicio-productos.</li>
+     * </ol>
+     *
+     * <p>Como en {@link #crear}, no hay una transacción que abarque la llamada HTTP (son dos bases
+     * distintas). Si servicio-productos no responde, el pedido vuelve a CREADO y se responde 503
+     * para que el cliente reintente la cancelación. Si el producto ya no existe, el pedido queda
+     * cancelado igualmente: no hay stock que reponer.
+     */
     public Pedido cancelar(Long id) {
-        Pedido pedido = repositorio.findById(id).orElseThrow(() -> new PedidoNoEncontradoException(id));
-        if (pedido.getEstado() != EstadoPedido.CREADO) {
-            throw new PedidoNoCancelableException(id, pedido.getEstado());
+        Pedido pedido = PrimaryRead.call(() -> repositorio.findById(id))
+                .orElseThrow(() -> new PedidoNoEncontradoException(id));
+        if (pedido.getEstado() != EstadoPedido.CREADO
+                || repositorio.cambiarEstado(id, EstadoPedido.CREADO, EstadoPedido.CANCELADO) == 0) {
+            // Ya estaba cancelado, o lo canceló otra solicitud entre la lectura y este paso.
+            throw new PedidoNoCancelableException(id, EstadoPedido.CANCELADO);
+        }
+
+        try {
+            productos.reponerStock(pedido.getProductoId(), pedido.getCantidad());
+            log.info("Pedido {} cancelado: stock repuesto productoId={} cantidad={}",
+                    id, pedido.getProductoId(), pedido.getCantidad());
+        } catch (ProductoNoEncontradoException e) {
+            log.warn("Pedido {} cancelado: el producto {} ya no existe, no hay stock que reponer",
+                    id, pedido.getProductoId());
+        } catch (RuntimeException e) {
+            revertirCancelacion(id);
+            throw e;
         }
         pedido.cancelar();
-        log.info("Pedido {} cancelado", id);
         return pedido;
+    }
+
+    /** Devuelve el pedido a CREADO cuando no se pudo reponer el stock, para que se pueda reintentar. */
+    private void revertirCancelacion(Long id) {
+        try {
+            repositorio.cambiarEstado(id, EstadoPedido.CANCELADO, EstadoPedido.CREADO);
+            log.warn("Pedido {}: no se pudo reponer el stock; el pedido vuelve a CREADO", id);
+        } catch (RuntimeException e) {
+            log.error("Pedido {} cancelado sin reponer el stock y no se pudo revertir la cancelación. "
+                    + "Estado inconsistente que requiere corrección manual.", id, e);
+        }
     }
 }
