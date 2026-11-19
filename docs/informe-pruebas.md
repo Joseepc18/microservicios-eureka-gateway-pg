@@ -303,7 +303,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 - **Primera lectura tras una caída:** la lectura a la que le toca la réplica caída puede esperar hasta el `connection-timeout` del pool (3 s en P06) antes de excluirla. No falla, pero tarda.
 - **Ventana de detección:** entre la caída y la exclusión pasan unos segundos (6 s en P06). Una réplica que vuelve tarda unos 12 s en reincorporarse (P08).
 - **Lecturas ordinarias con datos atrasados:** una lectura ordinaria puede no ver una escritura reciente (contraste de P07). El retraso aceptado está acotado por `max-lag` (10 s). Las lecturas que no lo toleran deben ser críticas.
-- **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde el streaming, su retraso medido no crece y seguiría en la rotación con datos cada vez más antiguos. En este despliegue solo ocurre si cae el primario.
+- **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde el streaming, su retraso medido no crece. El módulo lo detecta consultando si tiene un receptor de WAL activo (`pg_stat_wal_receiver`) y la excluye cuando otra réplica sí recibe WAL. Si ninguna lo recibe (primario caído), las mantiene en la rotación con datos posiblemente atrasados, para no dejar sin lecturas al servicio, y lo avisa en el log.
 - **Sin failover:** si cae el primario, las escrituras y las lecturas críticas fallan. No hay promoción automática de una réplica (el enunciado no la exige).
 
 ## Mejoras posibles
@@ -316,7 +316,7 @@ Todos los escenarios se ejecutaron sobre el sistema real en Docker Compose. Las 
 | Operación en `servicio-productos` para devolver stock | Cancelar no repone stock |
 | Permitir que la consulta de stock que hace `servicio-pedidos` lea del primario | Verificación previa con datos atrasados |
 | Eureka en clúster y varias instancias del Gateway y de `servicio-pedidos` detrás de un balanceador | Sin alta disponibilidad |
-| Failover automático de PostgreSQL (por ejemplo, Patroni o repmgr) y detección de una réplica que perdió el streaming | Sin failover; réplica desconectada del primario |
+| Failover automático de PostgreSQL (por ejemplo, Patroni o repmgr) | Sin failover |
 | Investigar por qué una instancia detenida con `stop` sigue ~25 s en el registro y ajustar la baja ordenada | Parada ordenada y registro |
 | Trazas distribuidas y métricas (Micrometer Tracing con Zipkin, Prometheus) además de los logs con `X-Request-Id` | Alcance de las mediciones |
 | Autenticación en el Gateway, TLS y gestión de secretos | Sin seguridad |
