@@ -179,7 +179,11 @@ Cambia el estado a `CANCELADO`. **No devuelve el stock**: `servicio-productos` s
 
 ### Timeouts y reintentos
 
-Las llamadas a `servicio-productos` tienen timeout de conexión de 2 s y de lectura de 5 s (`productos.client.*` en `application.yml`). **No se reintentan**: repetir el `PATCH` de stock podría descontarlo dos veces, y reintentar el `GET` sumaría espera sin garantía. Con una instancia caída, el LoadBalancer deja de elegirla cuando Eureka la expulsa (ver [arquitectura](arquitectura.md)); durante esa ventana algunas solicitudes pueden recibir `503` y el cliente debe reintentarlas.
+Las llamadas a `servicio-productos` tienen timeout de conexión de 2 s y de lectura de 5 s (`productos.client.*` en `application.yml`).
+
+- **`GET /productos/{id}`:** si falla por conexión o timeout, el LoadBalancer lo repite **una vez en otra instancia** (`spring.cloud.loadbalancer.retry.*`, con `spring-retry`). Así, mientras Eureka no expulsa una instancia caída (ver [arquitectura](arquitectura.md)), la consulta previa de un pedido pasa a la instancia viva en lugar de responder `503`; solo tarda unos 2 s más (el timeout de conexión). Repetir una consulta no tiene efectos secundarios.
+- **`PATCH /productos/{id}/stock`:** **no se reintenta** (`retry-on-all-operations: false`): si el primer intento llegó a descontar y se perdió la respuesta, repetirlo descontaría dos veces. Si cae en la instancia caída, `servicio-pedidos` responde `503` sin crear el pedido y el cliente debe reintentarlo.
+- **Sin instancias disponibles** (las dos detenidas): el `GET` prueba las dos y responde `503`.
 
 ### Trazabilidad con `X-Request-Id`
 

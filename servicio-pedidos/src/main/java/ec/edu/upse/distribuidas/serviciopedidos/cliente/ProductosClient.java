@@ -22,6 +22,10 @@ public class ProductosClient {
         this.rest = rest;
     }
 
+    /**
+     * Consulta un producto. Si la instancia elegida no responde, el LoadBalancer repite la consulta
+     * una vez en otra instancia ({@code spring.cloud.loadbalancer.retry} en application.yml).
+     */
     public ProductoDto obtener(Long id) {
         try {
             return rest.get().uri("/productos/{id}", id).retrieve().body(ProductoDto.class);
@@ -32,7 +36,10 @@ public class ProductosClient {
         }
     }
 
-    /** Descuenta stock. No se reintenta: repetir un PATCH podría descontar dos veces. */
+    /**
+     * Descuenta stock. No se reintenta (el reintento del LoadBalancer solo cubre GET): repetir un
+     * PATCH podría descontar dos veces.
+     */
     public void descontarStock(Long id, int cantidad) {
         try {
             rest.patch().uri("/productos/{id}/stock", id)
@@ -52,8 +59,7 @@ public class ProductosClient {
         String detalle;
         if (causa instanceof ResourceAccessException) {
             detalle = "sin respuesta (timeout o error de conexión)";
-        } else if (causa instanceof IllegalStateException && causa.getMessage() != null
-                && causa.getMessage().startsWith("No instances available")) {
+        } else if (sinInstancias(causa)) {
             detalle = "no hay instancias registradas en Eureka";
         } else if (causa instanceof HttpStatusCodeException http) {
             detalle = "respondió con estado " + http.getStatusCode().value();
@@ -61,5 +67,17 @@ public class ProductosClient {
             detalle = causa.getClass().getSimpleName();
         }
         return new ServicioProductosNoDisponibleException(detalle, causa);
+    }
+
+    /**
+     * El LoadBalancer no encontró instancias. Sin reintento lanza {@code IllegalStateException("No
+     * instances available ...")}; con reintento (spring-retry), {@code IllegalArgumentException("Service
+     * Instance cannot be null ...")}.
+     */
+    private static boolean sinInstancias(RuntimeException causa) {
+        String mensaje = causa.getMessage();
+        return mensaje != null
+                && (causa instanceof IllegalStateException && mensaje.startsWith("No instances available")
+                    || causa instanceof IllegalArgumentException && mensaje.startsWith("Service Instance cannot be null"));
     }
 }

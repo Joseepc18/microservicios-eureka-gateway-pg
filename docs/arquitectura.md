@@ -200,7 +200,7 @@ Qué pasa cuando algo falla (detalle en [api.md](api.md)):
 
 - **Antes del descuento** (producto inexistente, stock insuficiente, `servicio-productos` caído): no se modifica nada.
 - **Después del descuento**, si falla el guardado: el stock queda descontado sin pedido. No hay transacciones distribuidas; se registra un `ERROR` con el `X-Request-Id` y la corrección es manual.
-- **Una instancia de `servicio-productos` caída:** mientras Eureka no la expulsa (~35 s en el peor caso para que `servicio-pedidos` deje de elegirla) algunas solicitudes pueden recibir `503` y el cliente debe reintentarlas. `servicio-pedidos` no reintenta: repetir el `PATCH` podría descontar dos veces.
+- **Una instancia de `servicio-productos` caída:** mientras Eureka no la expulsa (~35 s en el peor caso para que `servicio-pedidos` deje de elegirla), `servicio-pedidos` repite una vez en la otra instancia la consulta del producto (`GET`), así que ese paso no falla. El descuento (`PATCH`) no se reintenta, porque repetirlo podría descontar dos veces: si cae en la instancia caída, el pedido responde `503` y el cliente debe reintentarlo.
 - **Una réplica PostgreSQL caída:** las lecturas continúan por la otra réplica (o por el primario si no queda ninguna); el cliente no ve errores.
 
 El mismo `X-Request-Id` viaja del cliente a `servicio-pedidos` y de ahí a `servicio-productos`, de modo que una solicitud se sigue en los logs de ambos servicios.
