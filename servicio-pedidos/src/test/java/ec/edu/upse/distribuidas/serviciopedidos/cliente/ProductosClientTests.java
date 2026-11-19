@@ -147,4 +147,30 @@ class ProductosClientTests {
 
         servidor.verify();
     }
+
+    @Test
+    void sinInstanciasEnEurekaSeExplicaEnElMensaje() {
+        // Así fallan las llamadas cuando el LoadBalancer (con reintento) no tiene instancias.
+        assertThat(clienteQueFallaCon(new IllegalArgumentException(
+                "Service Instance cannot be null, serviceId: servicio-productos")))
+                .hasMessageContaining("no hay instancias registradas en Eureka");
+        // Y así sin reintento.
+        assertThat(clienteQueFallaCon(new IllegalStateException(
+                "No instances available for servicio-productos")))
+                .hasMessageContaining("no hay instancias registradas en Eureka");
+    }
+
+    private static ServicioProductosNoDisponibleException clienteQueFallaCon(RuntimeException error) {
+        ProductosClient falla = new ProductosClient(RestClient.builder().baseUrl(BASE)
+                .requestInterceptor((request, body, execution) -> {
+                    throw error;
+                })
+                .build());
+        try {
+            falla.obtener(1L);
+            throw new AssertionError("Se esperaba ServicioProductosNoDisponibleException");
+        } catch (ServicioProductosNoDisponibleException e) {
+            return e;
+        }
+    }
 }

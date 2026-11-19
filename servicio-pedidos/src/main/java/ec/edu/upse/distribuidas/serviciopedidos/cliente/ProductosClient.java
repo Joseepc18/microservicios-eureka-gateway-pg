@@ -59,8 +59,7 @@ public class ProductosClient {
         String detalle;
         if (causa instanceof ResourceAccessException) {
             detalle = "sin respuesta (timeout o error de conexión)";
-        } else if (causa instanceof IllegalStateException && causa.getMessage() != null
-                && causa.getMessage().startsWith("No instances available")) {
+        } else if (sinInstancias(causa)) {
             detalle = "no hay instancias registradas en Eureka";
         } else if (causa instanceof HttpStatusCodeException http) {
             detalle = "respondió con estado " + http.getStatusCode().value();
@@ -68,5 +67,17 @@ public class ProductosClient {
             detalle = causa.getClass().getSimpleName();
         }
         return new ServicioProductosNoDisponibleException(detalle, causa);
+    }
+
+    /**
+     * El LoadBalancer no encontró instancias. Sin reintento lanza {@code IllegalStateException("No
+     * instances available ...")}; con reintento (spring-retry), {@code IllegalArgumentException("Service
+     * Instance cannot be null ...")}.
+     */
+    private static boolean sinInstancias(RuntimeException causa) {
+        String mensaje = causa.getMessage();
+        return mensaje != null
+                && (causa instanceof IllegalStateException && mensaje.startsWith("No instances available")
+                    || causa instanceof IllegalArgumentException && mensaje.startsWith("Service Instance cannot be null"));
     }
 }
