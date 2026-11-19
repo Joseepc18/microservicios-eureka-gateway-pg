@@ -56,12 +56,15 @@ sql() {
 # Uso: http GET /api/pedidos p05-lectura-1 [json]
 http() {
     local metodo=$1 ruta=$2 rid=$3 datos=${4:-}
+    # Sin respuesta, curl no escribe el archivo: se borra para no leer el cuerpo de la solicitud anterior.
+    rm -f "$CUERPO"
+    # Si falla la conexión, curl imprime igualmente "000 <tiempo>s".
     if [ -n "$datos" ]; then
         curl -s -o "$CUERPO" -w '%{http_code} %{time_total}s' -X "$metodo" "$GATEWAY$ruta" \
-            -H "X-Request-Id: $rid" -H 'Content-Type: application/json' -d "$datos" || echo "000 error"
+            -H "X-Request-Id: $rid" -H 'Content-Type: application/json' -d "$datos" || true
     else
         curl -s -o "$CUERPO" -w '%{http_code} %{time_total}s' -X "$metodo" "$GATEWAY$ruta" \
-            -H "X-Request-Id: $rid" || echo "000 error"
+            -H "X-Request-Id: $rid" || true
     fi
 }
 
@@ -104,6 +107,7 @@ crear_pedido() {
     r=$(http POST /api/pedidos "$1" '{"productoId":'"$PRODUCTO_ID"',"cantidad":1}')
     PEDIDO_ID=$(id_respuesta)
     echo "$(hora) POST /api/pedidos [$1] -> $r, pedidoId=$PEDIDO_ID"
+    [ "${r%% *}" = 201 ] && [ -n "$PEDIDO_ID" ] || { echo "No se pudo crear el pedido $1"; exit 1; }
 }
 
 esperar_saludable() {
