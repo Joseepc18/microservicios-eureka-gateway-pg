@@ -1,0 +1,2 @@
+$ curl -s http://127.0.0.1:8761/actuator/health
+{"status":"UP","groups":["liveness","readiness"]}

@@ -1,0 +1,2 @@
+corrida1-kill: rescatadas>=1500ms=44 primera=+2.6s ultima=+30.7s | errores=9 primer=+2.1s ultimo=+26.7s
+corrida2-kill: rescatadas>=1500ms=46 primera=+1.4s ultima=+30.3s | errores=8 primer=+8.5s ultimo=+23.2s

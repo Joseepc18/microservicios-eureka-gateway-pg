@@ -1,0 +1,35 @@
+$ curl -i http://127.0.0.1:8080/api/productos/1   (cuerpo recortado)
+HTTP/1.1 200 OK
+transfer-encoding: chunked
+X-Instance-Id: productos-2
+X-Request-Id: 9cec3200-df1b-4fed-99c6-a9714bb57e8e
+Content-Type: application/json
+Date: Thu, 19 Nov 2026 00:08:20 GMT
+
+{"id":1,"nombre":"Laptop 14 pulgadas","descripcion":"Laptop de 14 pulgadas, 16 GB de RAM","precio":749.90,"stock":25}
+
+$ curl -i http://127.0.0.1:8080/api/productos   (cuerpo recortado)
+HTTP/1.1 200 OK
+transfer-encoding: chunked
+X-Instance-Id: productos-1
+X-Request-Id: a9d9835b-8fab-442f-9bcb-29abade5ceee
+Content-Type: application/json
+Date: Thu, 19 Nov 2026 00:08:21 GMT
+
+[{"id":1,"nombre":"Laptop 14 pulgadas","descripcion":"Laptop de 14 pulgadas, 16 GB de RAM","precio":749.90,"stock":25},{"id":2,"nombre":"Mouse inalámbrico","descripcion":"Mouse óptico con receptor USB","precio":12.50,"stock":150},{"id":3,"nombre":"Teclado mecánico","descripcion":"Teclado mecánico en español","precio":45.00,"stock":80},{"id":4,"nombre":"Monitor 24 pulgadas","descripcion":"Monitor Full HD de 24 pulgadas","precio":139.99,"stock":40},{"id":5,"nombre":"Auriculares","descripcion":"Auriculares con micrófono","precio":29.75,"stock":100}] [...]
+
+$ curl -i http://127.0.0.1:8080/api/pedidos
+HTTP/1.1 200 OK
+transfer-encoding: chunked
+X-Request-Id: 3729302e-5f17-442f-9671-662b8f3d9e23
+X-Instance-Id: pedidos-1
+Content-Type: application/json
+Date: Thu, 19 Nov 2026 00:08:21 GMT
+
+[]
+
+$ curl -s -o /dev/null -D - http://127.0.0.1:8080/api/productos/1  (x4, solo X-Instance-Id: el balanceo alterna)
+HTTP/1.1 200 OK X-Instance-Id: productos-2 
+HTTP/1.1 200 OK X-Instance-Id: productos-1 
+HTTP/1.1 200 OK X-Instance-Id: productos-2 
+HTTP/1.1 200 OK X-Instance-Id: productos-1 

@@ -1,0 +1,19 @@
+== P02 · Balanceo HTTP ==
+Inicio:    2026-11-18 19:09:40
+URL:       http://127.0.0.1:8080/api/productos/1
+Solicitudes: 300 (pausa 0s)
+
+
+== Resumen ==
+Solicitudes enviadas: 300
+Exitosas (2xx):       300
+Errores:              0
+
+Distribución por instancia (header X-Instance-Id):
+  productos-1     149  (49.7 %)
+  productos-2     151  (50.3 %)
+
+Distribución por código HTTP:
+  200     300
+
+Fin:       2026-11-18 19:11:34

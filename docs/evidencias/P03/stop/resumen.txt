@@ -1,0 +1,89 @@
+== P03 · Fallo de instancia ==
+Inicio:      2026-11-18 19:19:39
+Modo:        stop (docker compose stop servicio-productos-2)
+Carga:       GET http://127.0.0.1:8080/api/productos cada 200 ms durante 60 s
+Fallo en:    t=15 s   Fase 'durante': 30 s desde el fallo
+Instancia:   servicio-productos:productos-2 (servicio de Compose: servicio-productos-2)
+Detalle en:  docs/evidencias/P03/stop
+Estado inicial en Eureka de productos-2: UP
+
+[t=15.2 s] docker compose stop servicio-productos-2
+[t=60.2 s] fin de la carga; esperando solicitudes en curso
+Comando de fallo terminado en t=18293 ms (lanzado en t=15211 ms)
+
+== Resultados por fases (tiempos medidos desde el inicio de la carga) ==
+--- Fase 'antes' (t < 15.2 s) ---
+  Solicitudes: 51   Exitosas (2xx): 51   Errores: 0
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 0   latencia máxima exitosa: 70 ms
+  Códigos HTTP:
+    200       51
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1     25
+    productos-2     26
+--- Fase 'durante' (desde el fallo, 30 s) ---
+  Solicitudes: 101   Exitosas (2xx): 101   Errores: 0
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 6   latencia máxima exitosa: 4174 ms
+  Códigos HTTP:
+    200      101
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1    100
+    productos-2      1
+--- Fase 'despues' (después de la ventana) ---
+  Solicitudes: 48   Exitosas (2xx): 48   Errores: 0
+  Exitosas lentas (>= 1500 ms, rescatadas por reintento): 0   latencia máxima exitosa: 80 ms
+  Códigos HTTP:
+    200       48
+  Instancia que respondió (X-Instance-Id; '-' = sin header, p. ej. error del Gateway):
+    productos-1     48
+
+== Errores en el tiempo (solicitudes en ventanas de 5 s desde el fallo) ==
+Ventana (s)         Solicitudes  Errores
+antes del fallo              51        0
++0 a +5                      17        0
++5 a +10                     16        0
++10 a +15                    17        0
++15 a +20                    18        0
++20 a +25                    17        0
++25 a +30                    16        0
++30 a +35                    17        0
++35 a +40                    15        0
++40 a +45                    16        0
+
+== Tiempos (segundos desde el comando de fallo) ==
+Errores tras el fallo:            ninguno
+Solicitudes rescatadas por reintento (>= 1500 ms): 6
+Primera / última rescatada:       +2.3 s / +5.2 s  (el Gateway aún elegía la instancia caída)
+Eureka la marca DOWN:             +1.7 s
+Eureka la retira del registro:    +25.4 s  (muestreo cada ~1 s)
+Referencia documentada (docs/arquitectura.md): expulsión ~24 s; Gateway deja de enviarle tráfico ~35 s (peor caso).
+
+== Estado de la instancia en el registro de Eureka (solo cambios) ==
+  t=   0.1 s (-15.1 s respecto al fallo): UP
+  t=  16.9 s (+1.7 s respecto al fallo): DOWN
+  t=  40.6 s (+25.4 s respecto al fallo): AUSENTE
+
+== Log del Gateway durante la prueba: destino y estado (target / status, recuento) ==
+  servicio-productos-1:8081    200      173
+  servicio-productos-2:8082    200       27
+  (el Gateway registra una línea por solicitud con el destino del último intento)
+Líneas de error del Gateway (status 5xx), hasta 15:
+
+== Recuperación: docker compose start servicio-productos-2 ==
+   Container quirky-nash-37f928-primary-1 Waiting 
+   Container quirky-nash-37f928-discovery-server-1 Waiting 
+   Container quirky-nash-37f928-discovery-server-1 Healthy 
+   Container quirky-nash-37f928-primary-1 Healthy 
+   Container quirky-nash-37f928-servicio-productos-2-1 Starting 
+   Container quirky-nash-37f928-servicio-productos-2-1 Started 
+[arranque ordenado a las 19:20:46]
+Eureka: servicio-productos:productos-2 vuelve a figurar UP a los 19.0 s del comando start.
+Gateway: productos-2 vuelve a responder solicitudes a los 25.6 s del comando start.
+
+Comprobación posterior: 30 solicitudes seguidas
+  productos-1   15
+  productos-2   15
+  Códigos:
+    200     30
+
+Fin: 2026-11-18 19:21:24
+exit=0

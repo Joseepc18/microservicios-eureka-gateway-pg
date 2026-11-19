@@ -1,0 +1,5 @@
+# Análisis adicional de la corrida 1 (el script aún no calculaba latencias): exitosas con latencia >= 1500 ms por fase, a partir de solicitudes.txt
+# Columnas de solicitudes.txt: t_ms codigo instancia latencia_ms. Fallo lanzado en t=20172 ms; ventana "durante" = 20172..60172 ms
+antes    exitosas=100 lentas(>=1500ms)=0 latencia_max_exitosa=45ms errores=0 latencia_max_error=0ms
+despues  exitosas=115 lentas(>=1500ms)=0 latencia_max_exitosa=107ms errores=0 latencia_max_error=0ms
+durante  exitosas=129 lentas(>=1500ms)=44 latencia_max_exitosa=4220ms errores=9 latencia_max_error=6299ms

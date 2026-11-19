@@ -1,0 +1,14 @@
+$ docker compose logs --no-log-prefix api-gateway | grep "GW method=GET path=/api/productos" | sed ... | sort | uniq -c   (recuento por ruta, destino y estado)
+# Incluye también las 5 solicitudes de P01 (1 a /api/productos y 4 a /api/productos/1) hechas antes: 2 a productos-1 y 3 a productos-2 en /api/productos/1, y 1 a productos-1 en /api/productos
+     48 ruta=/api/productos destino=servicio-productos-1:8081 status=200
+     53 ruta=/api/productos destino=servicio-productos-2:8082 status=200
+    151 ruta=/api/productos/1 destino=servicio-productos-1:8081 status=200
+    154 ruta=/api/productos/1 destino=servicio-productos-2:8082 status=200
+
+# Últimas 6 líneas completas del log del Gateway
+2026-11-19T00:11:32.546Z  INFO 1 --- [api-gateway] [r-http-epoll-10] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos/1 route=servicio-productos target=servicio-productos-2:8082 instanceId=productos-2 status=200 ms=6
+2026-11-19T00:11:32.830Z  INFO 1 --- [api-gateway] [r-http-epoll-11] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos/1 route=servicio-productos target=servicio-productos-1:8081 instanceId=productos-1 status=200 ms=7
+2026-11-19T00:11:33.130Z  INFO 1 --- [api-gateway] [r-http-epoll-12] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos/1 route=servicio-productos target=servicio-productos-2:8082 instanceId=productos-2 status=200 ms=7
+2026-11-19T00:11:33.419Z  INFO 1 --- [api-gateway] [or-http-epoll-1] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos/1 route=servicio-productos target=servicio-productos-1:8081 instanceId=productos-1 status=200 ms=6
+2026-11-19T00:11:33.797Z  INFO 1 --- [api-gateway] [or-http-epoll-2] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos/1 route=servicio-productos target=servicio-productos-2:8082 instanceId=productos-2 status=200 ms=10
+2026-11-19T00:11:34.117Z  INFO 1 --- [api-gateway] [or-http-epoll-3] e.e.u.d.apigateway.RequestLoggingFilter  : GW method=GET path=/api/productos/1 route=servicio-productos target=servicio-productos-1:8081 instanceId=productos-1 status=200 ms=7

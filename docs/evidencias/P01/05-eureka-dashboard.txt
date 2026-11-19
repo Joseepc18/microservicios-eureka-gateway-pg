@@ -1,0 +1,8 @@
+$ curl -s http://127.0.0.1:8761/ | grep -E "SERVICIO-|API-GATEWAY|servicio-productos:|gateway-1|pedidos-1|UP \("   (dashboard HTML, líneas relevantes)
+<td><b>API-GATEWAY</b></td>
+<a href="http://api-gateway:8080/actuator/info" target="_blank">api-gateway:gateway-1</a>
+<td><b>SERVICIO-PEDIDOS</b></td>
+<a href="http://servicio-pedidos:8083/actuator/info" target="_blank">servicio-pedidos:pedidos-1</a>
+<td><b>SERVICIO-PRODUCTOS</b></td>
+<a href="http://servicio-productos-2:8082/actuator/info" target="_blank">servicio-productos:productos-2</a>
+<a href="http://servicio-productos-1:8081/actuator/info" target="_blank">servicio-productos:productos-1</a>

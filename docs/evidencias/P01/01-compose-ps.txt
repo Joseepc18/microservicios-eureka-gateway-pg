@@ -1,0 +1,10 @@
+$ docker compose ps
+NAME                                        IMAGE                      COMMAND                  SERVICE                CREATED              STATUS                        PORTS
+quirky-nash-37f928-api-gateway-1            api-gateway:local          "java -jar app.jar"      api-gateway            About a minute ago   Up 55 seconds (healthy)       0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+quirky-nash-37f928-discovery-server-1       discovery-server:local     "java -jar app.jar"      discovery-server       About a minute ago   Up About a minute (healthy)   0.0.0.0:8761->8761/tcp, [::]:8761->8761/tcp
+quirky-nash-37f928-primary-1                postgres:17                "docker-entrypoint.s…"   primary                About a minute ago   Up About a minute (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+quirky-nash-37f928-replica1-1               postgres:17                "/bin/bash /scripts/…"   replica1               About a minute ago   Up About a minute (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+quirky-nash-37f928-replica2-1               postgres:17                "/bin/bash /scripts/…"   replica2               About a minute ago   Up About a minute (healthy)   0.0.0.0:5434->5432/tcp, [::]:5434->5432/tcp
+quirky-nash-37f928-servicio-pedidos-1       servicio-pedidos:local     "java -jar app.jar"      servicio-pedidos       About a minute ago   Up 55 seconds (healthy)       0.0.0.0:8083->8083/tcp, [::]:8083->8083/tcp
+quirky-nash-37f928-servicio-productos-1-1   servicio-productos:local   "java -jar app.jar"      servicio-productos-1   About a minute ago   Up 55 seconds (healthy)       0.0.0.0:8081->8081/tcp, [::]:8081->8081/tcp
+quirky-nash-37f928-servicio-productos-2-1   servicio-productos:local   "java -jar app.jar"      servicio-productos-2   About a minute ago   Up 55 seconds (healthy)       0.0.0.0:8082->8082/tcp, [::]:8082->8082/tcp
