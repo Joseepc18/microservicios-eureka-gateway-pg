@@ -79,6 +79,13 @@ public class ReplicaHealthMonitor implements SmartLifecycle {
                 problem = null;
             }
         } catch (Exception ex) {
+            if (ConnectionFailures.isPoolExhausted(ex)) {
+                // Todas las conexiones del pool están en uso: la réplica atiende consultas, así que
+                // la verificación no es concluyente. No cuenta como fallo ni cambia su estado.
+                log.info("DB health node={} verificación omitida: pool agotado ({})", replica.getName(),
+                        ConnectionFailures.describe(ex));
+                return;
+            }
             problem = "sin conexión: " + ConnectionFailures.describe(ex);
         }
 
