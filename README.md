@@ -4,7 +4,7 @@ Proyecto de la asignatura **Aplicaciones Distribuidas** (Universidad Estatal Pen
 
 Sistema de microservicios en Spring Boot con descubrimiento dinámico (Eureka), un único punto de entrada con balanceo de carga (Spring Cloud Gateway) y una capa PostgreSQL con un nodo primario y dos réplicas de lectura. Todo se levanta con Docker Compose.
 
-> **Estado:** el sistema está completo e integrado. Tres entregables dependen de trabajo que se cierra aparte y están marcados donde corresponde: los resultados de las pruebas P01-P04 en el informe, la colección de solicitudes (`requests/`) y el enlace del video. Ver [Entregables y documentación](#entregables-y-documentación).
+> **Estado:** el sistema está completo e integrado. Dos entregables dependen de trabajo que se cierra aparte y están marcados donde corresponde: los resultados de las pruebas P01-P03 en el informe y el enlace del video. Ver [Entregables y documentación](#entregables-y-documentación).
 
 ## Equipo
 
@@ -94,8 +94,8 @@ Dentro de la red de Compose cada contenedor usa su puerto interno (el mismo núm
 .
 ├── database/            Scripts de inicialización del primario y de las réplicas
 ├── docs/                Arquitectura, diagramas, API, plan de trabajo, informe de pruebas y evidencias
-├── requests/            Colección de solicitudes HTTP (ver más abajo)
-├── scripts/             Scripts de las pruebas P05-P08
+├── requests/            Colección de solicitudes HTTP (.http)
+├── scripts/             Scripts de las pruebas P04-P08
 ├── persistence-routing/ Librería compartida de enrutamiento de lecturas y escrituras
 ├── discovery-server/    Eureka Server
 ├── api-gateway/         Spring Cloud Gateway
@@ -114,7 +114,7 @@ Dentro de la red de Compose cada contenedor usa su puerto interno (el mismo núm
 | Docker con Compose v2 (`docker compose`) | Construir y ejecutar todo el sistema | En Windows y macOS, Docker Desktop. Se necesita una versión reciente de Compose (se usa `docker compose up --wait`); se desarrolló con Docker 29 y Compose 5 |
 | Conexión a Internet | La primera vez | Descarga las imágenes base, Maven y las dependencias. La primera construcción tarda varios minutos |
 | Puertos libres: 8080-8083, 8761, 5432-5434 | Publicar los servicios en el host | Los de las aplicaciones se cambian en `.env`; los de PostgreSQL no |
-| Bash y `curl` | Solo para los scripts de P05-P08 y los ejemplos con `curl` | En Windows, Git Bash (viene con Git for Windows) |
+| Bash y `curl` | Solo para los scripts de P04-P08 y los ejemplos con `curl` | En Windows, Git Bash (viene con Git for Windows) |
 | Java 21 | Solo para compilar o probar **fuera de Docker** | No hace falta instalar Maven: el repositorio incluye Maven Wrapper (`mvnw`) |
 
 Para levantar el sistema no hace falta Java ni Maven en el equipo: las imágenes se compilan dentro de Docker.
@@ -275,7 +275,7 @@ No hay que cargar nada a mano.
 docker compose exec primary sh -c 'psql -U "$POSTGRES_USER" -d productos_db -c "SELECT * FROM producto;"'
 ```
 
-Las pruebas P05-P08 crean además productos y pedidos de prueba en cada ejecución.
+Las pruebas P04-P08 crean además productos y pedidos de prueba en cada ejecución.
 
 ## Pruebas y compilación
 
@@ -299,7 +299,19 @@ docker build -f discovery-server/Dockerfile -t discovery-server .
 
 ### Pruebas experimentales P01-P08
 
-Los escenarios, los procedimientos y los resultados están en [docs/informe-pruebas.md](docs/informe-pruebas.md). Las evidencias de P05-P08 (salidas completas y logs) están en [docs/evidencias/](docs/evidencias/).
+Los escenarios, los procedimientos y los resultados están en [docs/informe-pruebas.md](docs/informe-pruebas.md). Las evidencias de P04-P08 (salidas completas y logs) están en [docs/evidencias/](docs/evidencias/).
+
+#### P04 · Comunicación entre servicios
+
+Requiere el sistema completo levantado (`docker compose up -d --build --wait`) y se ejecuta desde la raíz del repositorio con Bash (en Windows, Git Bash):
+
+```bash
+scripts/p04-comunicacion.sh    # pedido por el Gateway → servicio-productos; errores 404, 409 y 503
+```
+
+Crea pedidos, sigue cada solicitud por su `X-Request-Id` en los logs de ambos servicios y detiene las dos instancias de `servicio-productos` para provocar el `503` (las vuelve a iniciar al terminar, incluso si el script falla). Guarda la salida y las trazas en `docs/evidencias/P04/`. Usa las mismas variables que los scripts de persistencia, más `EUREKA` para la URL de Eureka.
+
+#### P05-P08 · Persistencia
 
 Los scripts de P05-P08 requieren el sistema completo levantado y se ejecutan desde la raíz del repositorio con Bash (en Windows, Git Bash). Cada uno provoca su escenario, imprime el resultado (`PXX OK` o `PXX FALLA`) y guarda su salida y el log de enrutamiento de `servicio-pedidos` en `docs/evidencias/PXX/`. Ejecutarlos en este orden:
 
@@ -319,7 +331,7 @@ Usan `curl`, `docker compose` y el `.env` de la raíz. Si las variables están e
 Sirve igual para cualquier servicio de Compose (`servicio-productos-1`, `servicio-productos-2`, `servicio-pedidos`, `api-gateway`). Ejemplo con la instancia 2 de productos:
 
 ```bash
-docker compose stop servicio-productos-2     # parada ordenada: se da de baja en Eureka
+docker compose stop servicio-productos-2     # parada ordenada: Eureka la marca DOWN a los ~2 s
 docker compose start servicio-productos-2    # vuelve a registrarse sola (~20-30 s)
 docker compose ps                            # debe figurar (healthy)
 docker compose logs servicio-productos-2     # diagnóstico
@@ -327,7 +339,8 @@ docker compose restart servicio-pedidos      # reiniciar un servicio
 ```
 
 - Con la instancia detenida, el Gateway reparte las solicitudes entre las restantes. Los `GET` que lleguen a la instancia caída se reintentan en otra.
-- Si la instancia cae de forma abrupta (sin darse de baja, por ejemplo `docker compose kill servicio-productos-2`), Eureka la expulsa a los ~24 s y el Gateway deja de enviarle solicitudes a los ~35 s en el peor caso. Durante esa ventana, las escrituras dirigidas a ella pueden fallar y el cliente debe reintentarlas (ver [docs/arquitectura.md](docs/arquitectura.md#eureka-configuración-y-tiempos-de-detección)).
+- Con `docker compose stop`, la instancia avisa a Eureka y la marca `DOWN` a los ~2 s, y el Gateway deja de enviarle tráfico en pocos segundos. Eureka no la retira del registro de inmediato: sigue apareciendo hasta los ~25 s.
+- Si la instancia cae de forma abrupta (sin avisar, por ejemplo `docker compose kill servicio-productos-2`), Eureka la expulsa a los ~24-27 s y el Gateway deja de enviarle solicitudes a los ~30 s (hasta ~35 s en el peor caso). Durante esa ventana hay errores `500` transitorios: en P03, entre 8 y 11 de unas 135 solicitudes `GET`, que el reintento del Gateway no siempre rescata, y las escrituras dirigidas a ella pueden fallar. El cliente debe reintentar (ver [docs/arquitectura.md](docs/arquitectura.md#eureka-configuración-y-tiempos-de-detección)).
 - Los contenedores no tienen reinicio automático: una instancia caída hay que iniciarla con `docker compose start`.
 - Si `servicio-productos` no tiene ninguna instancia registrada, `servicio-pedidos` responde `503` al crear pedidos.
 
@@ -388,7 +401,7 @@ También es necesario si el entorno se creó antes de este esquema de bases y ro
 | Arquitectura y decisiones de diseño | [docs/arquitectura.md](docs/arquitectura.md) |
 | API REST | [docs/api.md](docs/api.md) |
 | Informe de pruebas P01-P08 | [docs/informe-pruebas.md](docs/informe-pruebas.md) |
-| Colección de solicitudes | [requests/](requests/) |
+| Colección de solicitudes | [requests/](requests/README.md) |
 | Video demostrativo | Ver más abajo |
 | Librería de persistencia | [persistence-routing/README.md](persistence-routing/README.md) |
 | Plan de trabajo | [docs/plan-de-trabajo.md](docs/plan-de-trabajo.md) |
@@ -396,11 +409,11 @@ También es necesario si el entorno se creó antes de este esquema de bases y ro
 
 ### Informe de pruebas
 
-P05-P08 (persistencia) están ejecutadas y documentadas, con evidencias en [docs/evidencias/](docs/evidencias/). **Pendiente:** los resultados de P01-P03 (descubrimiento, balanceo y fallo de instancia) y P04 (comunicación entre servicios) se completan en el informe al cerrar las issues #5 y #14.
+P04-P08 (comunicación entre servicios y persistencia) están ejecutadas y documentadas, con evidencias en [docs/evidencias/](docs/evidencias/). **Pendiente:** los resultados de P01-P03 (descubrimiento, balanceo y fallo de instancia) se completan en el informe al integrar su PR (issue #5).
 
 ### Colección de solicitudes
 
-Se entrega en [`requests/`](requests/), en formato `.http` (VS Code con REST Client o IntelliJ), con ejemplos de todas las operaciones a través del Gateway. **Pendiente de integración:** la colección está en revisión (issue #13) y el enlace apunta a su ruta definitiva; se activa cuando se integre.
+Ejemplos de todas las operaciones a través del Gateway, con casos de error y verificación del sistema, en [requests/](requests/README.md). Son archivos `.http` que se usan con VS Code (extensión REST Client) o con IntelliJ. La documentación de cada operación está en [docs/api.md](docs/api.md).
 
 ### Video demostrativo
 

@@ -1,5 +1,7 @@
 # API REST
 
+Cada operación de este documento tiene su solicitud de ejemplo en la [colección de solicitudes](../requests/README.md) (`requests/`), incluidos los casos de error.
+
 ## servicio-productos
 
 Catálogo e inventario. Cada instancia escucha en su puerto (8081 y 8082 en el host); el acceso normal es por el Gateway:
