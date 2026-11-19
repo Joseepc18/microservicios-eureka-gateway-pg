@@ -1,44 +1,34 @@
-2026-11-18T23:42:08.418Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:08.419Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:08.805Z  INFO [p08-caida-1] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
-2026-11-18T23:42:08.810Z  INFO [p08-caida-1] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.s.servicio.PedidoService         : Pedido 51 creado: productoId=12 cantidad=1 total=10.00
-2026-11-18T23:42:09.040Z  INFO [p08-caida-2] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
-2026-11-18T23:42:09.044Z  INFO [p08-caida-2] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.s.servicio.PedidoService         : Pedido 52 creado: productoId=12 cantidad=1 total=10.00
-2026-11-18T23:42:09.310Z  INFO [p08-caida-3] 1 --- [servicio-pedidos] [io-8083-exec-10] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
-2026-11-18T23:42:09.315Z  INFO [p08-caida-3] 1 --- [servicio-pedidos] [io-8083-exec-10] e.e.u.d.s.servicio.PedidoService         : Pedido 53 creado: productoId=12 cantidad=1 total=10.00
-2026-11-18T23:42:09.559Z  INFO [p08-caida-4] 1 --- [servicio-pedidos] [nio-8083-exec-1] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
-2026-11-18T23:42:09.562Z  INFO [p08-caida-4] 1 --- [servicio-pedidos] [nio-8083-exec-1] e.e.u.d.s.servicio.PedidoService         : Pedido 54 creado: productoId=12 cantidad=1 total=10.00
-2026-11-18T23:42:09.811Z  INFO [p08-caida-5] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
-2026-11-18T23:42:09.814Z  INFO [p08-caida-5] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.s.servicio.PedidoService         : Pedido 55 creado: productoId=12 cantidad=1 total=10.00
-2026-11-18T23:42:12.740Z  INFO [p08-reinicio-1] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:13.463Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:13.464Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:14.474Z  INFO [p08-reinicio-2] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:16.153Z  INFO [p08-reinicio-3] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:17.820Z  INFO [p08-reinicio-4] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:18.502Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:18.503Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:19.517Z  INFO [p08-reinicio-5] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:21.184Z  INFO [p08-reinicio-6] 1 --- [servicio-pedidos] [io-8083-exec-10] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:22.852Z  INFO [p08-reinicio-7] 1 --- [servicio-pedidos] [nio-8083-exec-1] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:23.372Z  INFO [] 1 --- [servicio-pedidos] [ routing-health] e.e.u.d.p.ReplicaPoolDataSource          : DB health node=replica1 estado=UP recovery=true lag=0.0s -> reincorporada a la rotación; rotación=[replica1, replica2]
-2026-11-18T23:42:23.539Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:23.539Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:24.532Z  INFO [p08-reinicio-8] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:26.305Z  INFO [p08-reinicio-9] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
-2026-11-18T23:42:28.601Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:28.602Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:31.779Z  INFO [p08-despues-1] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:31.881Z  INFO [p08-despues-2] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
-2026-11-18T23:42:31.987Z  INFO [p08-despues-3] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:32.101Z  INFO [p08-despues-4] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
-2026-11-18T23:42:32.221Z  INFO [p08-despues-5] 1 --- [servicio-pedidos] [io-8083-exec-10] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:32.359Z  INFO [p08-despues-6] 1 --- [servicio-pedidos] [nio-8083-exec-1] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
-2026-11-18T23:42:32.480Z  INFO [p08-despues-7] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:32.600Z  INFO [p08-despues-8] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
-2026-11-18T23:42:32.743Z  INFO [p08-despues-9] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-2026-11-18T23:42:32.882Z  INFO [p08-despues-10] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
-2026-11-18T23:42:33.642Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:33.642Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:38.693Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
-2026-11-18T23:42:38.694Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:34.647Z  INFO [p08-caida-1] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
+2026-11-19T19:17:34.652Z  INFO [p08-caida-1] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.s.servicio.PedidoService         : Pedido 31 creado: productoId=15 cantidad=1 total=10.00
+2026-11-19T19:17:34.908Z  INFO [p08-caida-2] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
+2026-11-19T19:17:34.911Z  INFO [p08-caida-2] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.s.servicio.PedidoService         : Pedido 32 creado: productoId=15 cantidad=1 total=10.00
+2026-11-19T19:17:35.218Z  INFO [p08-caida-3] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
+2026-11-19T19:17:35.222Z  INFO [p08-caida-3] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.s.servicio.PedidoService         : Pedido 33 creado: productoId=15 cantidad=1 total=10.00
+2026-11-19T19:17:35.331Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:35.332Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:35.546Z  INFO [p08-caida-4] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
+2026-11-19T19:17:35.550Z  INFO [p08-caida-4] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.s.servicio.PedidoService         : Pedido 34 creado: productoId=15 cantidad=1 total=10.00
+2026-11-19T19:17:35.866Z  INFO [p08-caida-5] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
+2026-11-19T19:17:35.870Z  INFO [p08-caida-5] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.s.servicio.PedidoService         : Pedido 35 creado: productoId=15 cantidad=1 total=10.00
+2026-11-19T19:17:38.802Z  INFO [p08-reinicio-1] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
+2026-11-19T19:17:40.356Z  INFO [] 1 --- [servicio-pedidos] [ routing-health] e.e.u.d.p.ReplicaPoolDataSource          : DB health node=replica1 estado=UP recovery=true lag=0.0s wal=streaming -> reincorporada a la rotación; rotación=[replica1, replica2]
+2026-11-19T19:17:40.370Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:40.370Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:40.538Z  INFO [p08-reinicio-2] 1 --- [servicio-pedidos] [nio-8083-exec-1] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
+2026-11-19T19:17:42.263Z  INFO [p08-reinicio-3] 1 --- [servicio-pedidos] [io-8083-exec-10] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
+2026-11-19T19:17:45.418Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:45.419Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:47.506Z  INFO [p08-despues-1] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
+2026-11-19T19:17:47.651Z  INFO [p08-despues-2] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
+2026-11-19T19:17:47.783Z  INFO [p08-despues-3] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
+2026-11-19T19:17:47.923Z  INFO [p08-despues-4] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
+2026-11-19T19:17:48.060Z  INFO [p08-despues-5] 1 --- [servicio-pedidos] [nio-8083-exec-7] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
+2026-11-19T19:17:48.213Z  INFO [p08-despues-6] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
+2026-11-19T19:17:48.383Z  INFO [p08-despues-7] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
+2026-11-19T19:17:48.552Z  INFO [p08-despues-8] 1 --- [servicio-pedidos] [nio-8083-exec-1] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
+2026-11-19T19:17:48.741Z  INFO [p08-despues-9] 1 --- [servicio-pedidos] [io-8083-exec-10] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
+2026-11-19T19:17:48.925Z  INFO [p08-despues-10] 1 --- [servicio-pedidos] [nio-8083-exec-2] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
+2026-11-19T19:17:50.454Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:50.454Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:55.504Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none
+2026-11-19T19:17:55.505Z  INFO [] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=none

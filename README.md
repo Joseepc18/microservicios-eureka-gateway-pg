@@ -367,7 +367,7 @@ docker compose ps                           # replica1 debe figurar (healthy)
 docker compose exec primary sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT application_name, state, sent_lsn, replay_lsn FROM pg_stat_replication;"'
 ```
 
-`pg_stat_replication` debe mostrar `replica1` y `replica2` en estado `streaming`. La réplica recibe del primario el WAL que se generó mientras estaba detenida (lo conserva su slot de replicación) y el módulo la devuelve a la rotación cuando responde, sigue en recuperación y su retraso es aceptable: unos 12 s tras el arranque en P08. El estado se sigue con `docker compose logs servicio-pedidos | grep "DB health"`. [`scripts/p08-recuperacion.sh`](scripts/p08-recuperacion.sh) automatiza y documenta este procedimiento.
+`pg_stat_replication` debe mostrar `replica1` y `replica2` en estado `streaming`. La réplica recibe del primario el WAL que se generó mientras estaba detenida (lo conserva su slot de replicación) y el módulo la devuelve a la rotación cuando responde, sigue en recuperación y su retraso es aceptable: entre 3 y 12 s tras el arranque en P08. El estado se sigue con `docker compose logs servicio-pedidos | grep "DB health"`. [`scripts/p08-recuperacion.sh`](scripts/p08-recuperacion.sh) automatiza y documenta este procedimiento.
 
 **Réplica irrecuperable.** Si el slot de la réplica se invalidó (`wal_status = lost`, por superar `max_slot_wal_keep_size = 1GB` mientras estaba caída), no puede ponerse al día y hay que reconstruirla. Se borra solo el volumen de esa réplica:
 

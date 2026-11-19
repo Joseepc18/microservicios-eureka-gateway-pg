@@ -1,15 +1,15 @@
 # P04 · Comunicación entre servicios
-# Ejecutado: 2026-11-19 03:36:50 UTC
+# Ejecutado: 2026-11-19 19:22:45 UTC
 
 ## 1. Estado inicial
 
 $ docker compose ps
 SERVICE                STATUS
-api-gateway            Up About a minute (healthy)
-discovery-server       Up 2 minutes (healthy)
-servicio-pedidos       Up About a minute (healthy)
-servicio-productos-1   Up About a minute (healthy)
-servicio-productos-2   Up About a minute (healthy)
+api-gateway            Up 8 minutes (healthy)
+discovery-server       Up 16 minutes (healthy)
+servicio-pedidos       Up 36 seconds (healthy)
+servicio-productos-1   Up 6 minutes (healthy)
+servicio-productos-2   Up 7 minutes (healthy)
 
 Instancias registradas en Eureka (http://127.0.0.1:8761/eureka/apps):
   api-gateway:gateway-1
@@ -20,110 +20,110 @@ Instancias registradas en Eureka (http://127.0.0.1:8761/eureka/apps):
 
 ## 2. Caso correcto: POST /api/pedidos descuenta stock en servicio-productos
 
-03:36:54 POST /api/productos [p04-producto-ok] -> 201 0.837180s, productoId=6 (precio 20.00, stock 10)
+19:22:48 POST /api/productos [p04-producto-ok] -> 201 0.019039s, productoId=19 (precio 20.00, stock 10)
 Stock antes: 10
-03:36:58 POST /api/pedidos [p04-ok-1] -> 201 0.990839s
-Respuesta: {"id":1,"productoId":6,"cantidad":3,"total":60.00,"estado":"CREADO","fecha":"2026-11-19T03:36:58.132162191Z"}
+19:22:50 POST /api/pedidos [p04-ok-1] -> 201 0.336662s
+Respuesta: {"id":41,"productoId":19,"cantidad":3,"total":60.00,"estado":"CREADO","fecha":"2026-11-19T19:22:50.831254619Z"}
   [OK]    estado HTTP de la creación: 201
   [OK]    total del pedido (3 x 20.00): 60.00
 Stock después: 7
   [OK]    stock descontado en servicio-productos (10 - 3): 7
-03:37:01 GET /api/pedidos/1 [p04-ok-consulta] -> 200 0.056254s
+19:22:53 GET /api/pedidos/41 [p04-ok-consulta] -> 200 0.071735s
   [OK]    consulta del pedido creado: 200
 
 ## 3. Trazas del caso correcto: el X-Request-Id p04-ok-1 en ambos servicios
 
-  servicio-productos-2-1  | 2026-11-19T03:36:57.841Z  INFO [p04-ok-1] 1 --- [servicio-productos] [nio-8082-exec-5] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
-  servicio-productos-2-1  | 2026-11-19T03:36:57.872Z  INFO [p04-ok-1] 1 --- [servicio-productos] [nio-8082-exec-5] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/6 status=200 ms=62
-  servicio-productos-1-1  | 2026-11-19T03:36:58.106Z  INFO [p04-ok-1] 1 --- [servicio-productos] [nio-8081-exec-3] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
-  servicio-productos-1-1  | 2026-11-19T03:36:58.130Z  INFO [p04-ok-1] 1 --- [servicio-productos] [nio-8081-exec-3] e.e.u.d.s.web.RequestIdFilter            : REQ method=PATCH path=/productos/6/stock status=200 ms=205
-  servicio-pedidos-1      | 2026-11-19T03:36:58.296Z  INFO [p04-ok-1] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
-  servicio-pedidos-1      | 2026-11-19T03:36:58.408Z  INFO [p04-ok-1] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.s.servicio.PedidoService         : Pedido 1 creado: productoId=6 cantidad=3 total=60.00
-  servicio-pedidos-1      | 2026-11-19T03:36:58.426Z  INFO [p04-ok-1] 1 --- [servicio-pedidos] [nio-8083-exec-4] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=201 ms=909
+  servicio-productos-2-1  | 2026-11-19T19:22:50.783Z  INFO [p04-ok-1] 1 --- [servicio-productos] [nio-8082-exec-8] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
+  servicio-productos-2-1  | 2026-11-19T19:22:50.786Z  INFO [p04-ok-1] 1 --- [servicio-productos] [nio-8082-exec-8] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/19 status=200 ms=4
+  servicio-productos-1-1  | 2026-11-19T19:22:50.823Z  INFO [p04-ok-1] 1 --- [servicio-productos] [nio-8081-exec-6] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
+  servicio-productos-1-1  | 2026-11-19T19:22:50.829Z  INFO [p04-ok-1] 1 --- [servicio-productos] [nio-8081-exec-6] e.e.u.d.s.web.RequestIdFilter            : REQ method=PATCH path=/productos/19/stock status=200 ms=9
+  servicio-pedidos-1      | 2026-11-19T19:22:50.866Z  INFO [p04-ok-1] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.p.DataSourceNode                 : DB route=PRIMARY node=primary tx=read-write
+  servicio-pedidos-1      | 2026-11-19T19:22:50.902Z  INFO [p04-ok-1] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.s.servicio.PedidoService         : Pedido 41 creado: productoId=19 cantidad=3 total=60.00
+  servicio-pedidos-1      | 2026-11-19T19:22:50.909Z  INFO [p04-ok-1] 1 --- [servicio-pedidos] [nio-8083-exec-6] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=201 ms=326
   [OK]    solicitudes de servicio-productos con el mismo X-Request-Id (GET + PATCH): 2
 
 ## 4. Error: producto inexistente
 
-03:37:04 POST /api/pedidos [p04-404] -> 404 0.044616s
-Respuesta: {"timestamp":"2026-11-19T03:37:04.360923028Z","status":404,"error":"Not Found","message":"No existe el producto con id 999999","path":"/pedidos"}
+19:22:56 POST /api/pedidos [p04-404] -> 404 0.026647s
+Respuesta: {"timestamp":"2026-11-19T19:22:56.144476724Z","status":404,"error":"Not Found","message":"No existe el producto con id 999999","path":"/pedidos"}
   [OK]    estado HTTP: 404
-  [OK]    pedidos guardados (no debe crearse ninguno): 1
+  [OK]    pedidos guardados (no debe crearse ninguno): 41
 
 ## 5. Error: stock insuficiente
 
-03:37:05 POST /api/productos [p04-producto-escaso] -> 201 0.020954s, productoId=7 (precio 5.00, stock 2)
-03:37:08 POST /api/pedidos [p04-409] (5 unidades de un producto con stock 2) -> 409 0.025415s
-Respuesta: {"timestamp":"2026-11-19T03:37:08.311045228Z","status":409,"error":"Conflict","message":"Stock insuficiente para el producto 7 (solicitado: 5)","path":"/pedidos"}
+19:22:56 POST /api/productos [p04-producto-escaso] -> 201 0.015392s, productoId=20 (precio 5.00, stock 2)
+19:22:59 POST /api/pedidos [p04-409] (5 unidades de un producto con stock 2) -> 409 0.018970s
+Respuesta: {"timestamp":"2026-11-19T19:22:59.561360312Z","status":409,"error":"Conflict","message":"Stock insuficiente para el producto 20 (solicitado: 5)","path":"/pedidos"}
   [OK]    estado HTTP: 409
-  [OK]    pedidos guardados (no debe crearse ninguno): 1
+  [OK]    pedidos guardados (no debe crearse ninguno): 41
   [OK]    stock del producto sin cambios: 2
 
 ## 6. Error: servicio-productos detenido
 
-03:37:11 docker compose stop servicio-productos-1 servicio-productos-2
+19:23:02 docker compose stop servicio-productos-1 servicio-productos-2
  Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Stopping 
  Container microservicios-eureka-gateway-pg-servicio-productos-1-1 Stopping 
- Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Stopped 
  Container microservicios-eureka-gateway-pg-servicio-productos-1-1 Stopped 
-03:37:14 instancias detenidas
+ Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Stopped 
+19:23:07 instancias detenidas
 
 6a. Inmediatamente después de detenerlas (la caché del LoadBalancer puede conservar las instancias):
-03:37:16 POST /api/pedidos [p04-503-inmediato] -> 503 2.058221s
-Respuesta: {"timestamp":"2026-11-19T03:37:16.708937197Z","status":503,"error":"Service Unavailable","message":"El servicio de productos no está disponible: sin respuesta (timeout o error de conexión)","path":"/pedidos"}
+19:23:11 POST /api/pedidos [p04-503-inmediato] -> 503 4.038519s
+Respuesta: {"timestamp":"2026-11-19T19:23:11.141385626Z","status":503,"error":"Service Unavailable","message":"El servicio de productos no está disponible: sin respuesta (timeout o error de conexión)","path":"/pedidos"}
   [OK]    estado HTTP: 503
 
 6b. Con Eureka ya sin instancias (espera de 15 s):
-Instancias de servicio-productos en Eureka: 0
-03:37:32 POST /api/pedidos [p04-503] -> 503 0.026650s
-Respuesta: {"timestamp":"2026-11-19T03:37:32.063128695Z","status":503,"error":"Service Unavailable","message":"El servicio de productos no está disponible: no hay instancias registradas en Eureka","path":"/pedidos"}
+Instancias de servicio-productos en Eureka: 2
+19:23:26 POST /api/pedidos [p04-503] -> 503 0.015487s
+Respuesta: {"timestamp":"2026-11-19T19:23:26.431445943Z","status":503,"error":"Service Unavailable","message":"El servicio de productos no está disponible: no hay instancias registradas en Eureka","path":"/pedidos"}
   [OK]    estado HTTP: 503
-  [OK]    pedidos guardados (no debe crearse ninguno): 1
-03:37:33 GET /api/productos [p04-503-gateway] (directo por el Gateway) -> 503 0.050957s
+  [OK]    pedidos guardados (no debe crearse ninguno): 41
+19:23:27 GET /api/productos [p04-503-gateway] (directo por el Gateway) -> 503 0.031813s
   [OK]    el Gateway también responde 503: 503
 servicio-pedidos sigue disponible: servicio-pedidos healthy
 
 ## 7. Recuperación: se vuelven a iniciar las instancias
 
-03:37:33 docker compose start servicio-productos-1 servicio-productos-2
+19:23:27 docker compose start servicio-productos-1 servicio-productos-2
  Container microservicios-eureka-gateway-pg-discovery-server-1 Waiting 
  Container microservicios-eureka-gateway-pg-primary-1 Waiting 
- Container microservicios-eureka-gateway-pg-discovery-server-1 Waiting 
  Container microservicios-eureka-gateway-pg-primary-1 Waiting 
- Container microservicios-eureka-gateway-pg-discovery-server-1 Healthy 
+ Container microservicios-eureka-gateway-pg-discovery-server-1 Waiting 
  Container microservicios-eureka-gateway-pg-discovery-server-1 Healthy 
  Container microservicios-eureka-gateway-pg-primary-1 Healthy 
- Container microservicios-eureka-gateway-pg-servicio-productos-1-1 Starting 
  Container microservicios-eureka-gateway-pg-primary-1 Healthy 
  Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Starting 
- Container microservicios-eureka-gateway-pg-servicio-productos-1-1 Started 
+ Container microservicios-eureka-gateway-pg-discovery-server-1 Healthy 
+ Container microservicios-eureka-gateway-pg-servicio-productos-1-1 Starting 
  Container microservicios-eureka-gateway-pg-servicio-productos-2-1 Started 
-03:38:36 instancias healthy; esperando su registro en Eureka
-03:38:36 instancias de servicio-productos en Eureka: 2
-03:38:39 POST /api/pedidos [p04-recuperado] -> 201 2.148138s (intento 1)
-Respuesta: {"id":2,"productoId":6,"cantidad":1,"total":20.00,"estado":"CREADO","fecha":"2026-11-19T03:38:38.809937861Z"}
+ Container microservicios-eureka-gateway-pg-servicio-productos-1-1 Started 
+19:23:54 instancias healthy; esperando su registro en Eureka
+19:23:55 instancias de servicio-productos en Eureka: 2
+19:23:56 POST /api/pedidos [p04-recuperado] -> 201 0.302009s (intento 2)
+Respuesta: {"id":42,"productoId":19,"cantidad":1,"total":20.00,"estado":"CREADO","fecha":"2026-11-19T19:23:56.817097660Z"}
   [OK]    estado HTTP tras restaurar: 201
 
 ## 8. Trazas de los casos de error (X-Request-Id p04-404, p04-409 y p04-503*)
 
-  servicio-productos-1-1  | 2026-11-19T03:37:04.338Z  INFO [p04-404] 1 --- [servicio-productos] [nio-8081-exec-8] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
-  servicio-productos-1-1  | 2026-11-19T03:37:04.352Z  INFO [p04-404] 1 --- [servicio-productos] [nio-8081-exec-8] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/999999 status=404 ms=15
-  servicio-pedidos-1      | 2026-11-19T03:37:04.365Z  INFO [p04-404] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=404 ms=32
-  servicio-productos-2-1  | 2026-11-19T03:37:08.304Z  INFO [p04-409] 1 --- [servicio-productos] [nio-8082-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica2 tx=read-only
-  servicio-productos-2-1  | 2026-11-19T03:37:08.309Z  INFO [p04-409] 1 --- [servicio-productos] [nio-8082-exec-9] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/7 status=200 ms=6
-  servicio-pedidos-1      | 2026-11-19T03:37:08.312Z  INFO [p04-409] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=409 ms=13
-  servicio-pedidos-1      | 2026-11-19T03:37:16.698Z  WARN [p04-503-inmediato] 1 --- [servicio-pedidos] [nio-8083-exec-1] e.e.u.d.s.web.ManejadorErrores           : servicio-productos no disponible: El servicio de productos no está disponible: sin respuesta (
-  servicio-pedidos-1      | 2026-11-19T03:37:16.712Z  INFO [p04-503-inmediato] 1 --- [servicio-pedidos] [nio-8083-exec-1] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=503 ms=2030
-  servicio-pedidos-1      | 2026-11-19T03:37:32.056Z  WARN [p04-503] 1 --- [servicio-pedidos] [nio-8083-exec-5] o.s.c.l.core.RoundRobinLoadBalancer      : No servers available for service: servicio-productos
-  servicio-pedidos-1      | 2026-11-19T03:37:32.060Z  WARN [p04-503] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.s.web.ManejadorErrores           : servicio-productos no disponible: El servicio de productos no está disponible: no hay instancias registr
-  servicio-pedidos-1      | 2026-11-19T03:37:32.065Z  INFO [p04-503] 1 --- [servicio-pedidos] [nio-8083-exec-5] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=503 ms=12
+  servicio-productos-1-1  | 2026-11-19T19:22:56.133Z  INFO [p04-404] 1 --- [servicio-productos] [nio-8081-exec-9] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
+  servicio-productos-1-1  | 2026-11-19T19:22:56.138Z  INFO [p04-404] 1 --- [servicio-productos] [nio-8081-exec-9] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/999999 status=404 ms=5
+  servicio-pedidos-1      | 2026-11-19T19:22:56.147Z  INFO [p04-404] 1 --- [servicio-pedidos] [nio-8083-exec-9] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=404 ms=19
+  servicio-productos-2-1  | 2026-11-19T19:22:59.556Z  INFO [p04-409] 1 --- [servicio-productos] [nio-8082-exec-1] e.e.u.d.p.DataSourceNode                 : DB route=REPLICA node=replica1 tx=read-only
+  servicio-productos-2-1  | 2026-11-19T19:22:59.558Z  INFO [p04-409] 1 --- [servicio-productos] [nio-8082-exec-1] e.e.u.d.s.web.RequestIdFilter            : REQ method=GET path=/productos/20 status=200 ms=3
+  servicio-pedidos-1      | 2026-11-19T19:22:59.562Z  INFO [p04-409] 1 --- [servicio-pedidos] [io-8083-exec-10] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=409 ms=11
+  servicio-pedidos-1      | 2026-11-19T19:23:11.137Z  WARN [p04-503-inmediato] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.s.web.ManejadorErrores           : servicio-productos no disponible: El servicio de productos no está disponible: sin respuesta (
+  servicio-pedidos-1      | 2026-11-19T19:23:11.142Z  INFO [p04-503-inmediato] 1 --- [servicio-pedidos] [nio-8083-exec-3] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=503 ms=4015
+  servicio-pedidos-1      | 2026-11-19T19:23:26.428Z  WARN [p04-503] 1 --- [servicio-pedidos] [nio-8083-exec-8] o.s.c.l.core.RoundRobinLoadBalancer      : No servers available for service: servicio-productos
+  servicio-pedidos-1      | 2026-11-19T19:23:26.430Z  WARN [p04-503] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.s.web.ManejadorErrores           : servicio-productos no disponible: El servicio de productos no está disponible: no hay instancias registr
+  servicio-pedidos-1      | 2026-11-19T19:23:26.432Z  INFO [p04-503] 1 --- [servicio-pedidos] [nio-8083-exec-8] e.e.u.d.serviciopedidos.web.TrazaFilter  : REQ method=POST path=/pedidos status=503 ms=6
 
-Trazas completas guardadas en docs/evidencias/P04/trazas.txt (37 líneas)
+Trazas completas guardadas en docs/evidencias/P04/trazas.txt (40 líneas)
 
 ## Resultado
 
 Comprobaciones fallidas: 0
 SERVICE                STATUS
-servicio-pedidos       Up 3 minutes (healthy)
-servicio-productos-1   Up About a minute (healthy)
-servicio-productos-2   Up About a minute (healthy)
+servicio-pedidos       Up About a minute (healthy)
+servicio-productos-1   Up 30 seconds (healthy)
+servicio-productos-2   Up 31 seconds (healthy)
 P04 OK

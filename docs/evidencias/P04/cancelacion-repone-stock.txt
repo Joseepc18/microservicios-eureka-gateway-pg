@@ -1,0 +1,17 @@
+# Cancelación de un pedido con reposición de stock en servicio-productos
+# Ejecutado: 2026-11-19 19:19:07 UTC
+
+Producto 18 creado con stock 10
+Pedido 40 de 4 unidades creado -> stock 6
+
+Dos cancelaciones simultáneas del mismo pedido:
+  [cancelar-1] -> 409
+  [cancelar-2] -> 200
+Estado del pedido (lectura crítica): "estado":"CANCELADO"
+Stock después de cancelar: 10 (esperado 10: se repone una sola vez)
+
+Trazas:
+  2026-11-19T19:19:12.470Z [cancelar-1] REQ method=PATCH path=/pedidos/40/cancelar status=409 ms=66
+  2026-11-19T19:19:12.480Z [cancelar-2] REQ method=PATCH path=/productos/18/stock/reponer status=200 ms=10
+  2026-11-19T19:19:12.482Z [cancelar-2] stock repuesto productoId=18 cantidad=4
+  2026-11-19T19:19:12.483Z [cancelar-2] REQ method=PATCH path=/pedidos/40/cancelar status=200 ms=43
