@@ -2,7 +2,10 @@ package ec.edu.upse.distribuidas.persistencerouting;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.SQLTransientConnectionException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import javax.sql.DataSource;
 
@@ -16,8 +19,11 @@ import org.springframework.jdbc.datasource.AbstractDataSource;
  *
  * <ul>
  *   <li><b>Exclusión:</b> una réplica marcada como caída sale de la rotación. Si no se puede
- *       obtener una conexión de la réplica elegida, se marca como caída en el acto y se prueba
- *       con la siguiente disponible.</li>
+ *       obtener una conexión de la réplica elegida porque el nodo no responde, se marca como
+ *       caída en el acto y se prueba con la siguiente disponible.</li>
+ *   <li><b>Pool agotado:</b> si la réplica responde pero todas las conexiones de su pool están
+ *       en uso, no se excluye: se prueba con otra réplica. Si todas las disponibles están
+ *       agotadas, la lectura falla en lugar de cargar al primario.</li>
  *   <li><b>Sin réplicas disponibles:</b> la lectura se degrada al primario ({@code fallback}),
  *       con un aviso en el log. El primario siempre tiene el dato más reciente y acepta lecturas,
  *       así que el servicio sigue respondiendo; la carga extra es temporal y a esta escala no lo
@@ -89,24 +95,44 @@ public class ReplicaPoolDataSource extends AbstractDataSource {
 
     private Connection acquire(String username, String password) throws SQLException {
         SQLException lastFailure = null;
-        // Como mucho un intento por réplica: cada fallo deja una réplica menos disponible.
-        for (int attempt = 0; attempt < replicas.size(); attempt++) {
-            List<DataSourceNode> available = getAvailableReplicas();
-            if (available.isEmpty()) {
+        SQLException exhausted = null;
+        // Como mucho un intento por réplica en cada solicitud.
+        Set<DataSourceNode> tried = new HashSet<>();
+        while (true) {
+            List<DataSourceNode> candidates = getAvailableReplicas().stream()
+                    .filter(replica -> !tried.contains(replica))
+                    .toList();
+            if (candidates.isEmpty()) {
                 break;
             }
-            DataSourceNode replica = policy.select(available);
+            DataSourceNode replica = policy.select(candidates);
+            tried.add(replica);
             try {
                 return username == null ? replica.getConnection() : replica.getConnection(username, password);
             } catch (SQLException | RuntimeException ex) {
                 // HikariCP lanza PoolInitializationException (RuntimeException) si el pool no
                 // llegó a iniciarse porque el nodo no responde.
                 lastFailure = ex instanceof SQLException sql ? sql : new SQLException(ex.getMessage(), "08001", ex);
+                if (ConnectionFailures.isPoolExhausted(ex)) {
+                    // La réplica responde pero tiene todas sus conexiones en uso: no está caída.
+                    // Se prueba con otra réplica sin sacarla de la rotación.
+                    exhausted = lastFailure;
+                    log.warn("DB route=REPLICA node={} pool agotado ({}): se prueba otra réplica sin excluirla",
+                            replica.getName(), ConnectionFailures.describe(ex));
+                    continue;
+                }
                 if (!excludeOnConnectionFailure) {
                     throw lastFailure;
                 }
                 markDown(replica, "fallo al obtener conexión: " + ConnectionFailures.describe(ex));
             }
+        }
+        if (exhausted != null && !getAvailableReplicas().isEmpty()) {
+            // Las réplicas disponibles están ocupadas, no caídas. Degradar al primario le pasaría
+            // toda la carga de lectura justo cuando hay más demanda: la lectura falla y no se
+            // reintenta (ReadOnlyRetryInterceptor reconoce el pool agotado en la causa).
+            throw new SQLTransientConnectionException("No se obtuvo conexión: pools de las réplicas agotados "
+                    + names(getAvailableReplicas()), "08001", exhausted);
         }
         if (fallback == null) {
             SQLException ex = new SQLException("No hay réplicas disponibles", "08001");

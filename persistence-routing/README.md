@@ -198,6 +198,8 @@ DB route=REPLICA sin réplicas disponibles: la lectura se degrada al primario
 DB health node=replica1 estado=UP recovery=true lag=0.0s -> reincorporada a la rotación; rotación=[replica1, replica2]
 DB health las lecturas vuelven a las réplicas
 DB retry ProductoService.listar: fallo de conexión en una lectura (...); intento 2/2 en otra réplica
+DB route=REPLICA node=replica1 pool agotado (...): se prueba otra réplica sin excluirla
+DB health node=replica1 verificación omitida: pool agotado (...)
 ```
 
 Para filtrar un servicio: `docker compose logs servicio-productos-1 | grep -E "DB (route|health|retry)"`.
@@ -217,8 +219,8 @@ ReplicaSelectionPolicy replicaSelectionPolicy() {
 
 - **Primario caído:** no hay promoción automática ni failover (el proyecto no lo exige). Las escrituras y las lecturas críticas fallan mientras el primario no responda.
 - **Réplica desconectada del primario:** si una réplica sigue en pie pero pierde la conexión con el primario, deja de recibir WAL sin que su retraso medido crezca, porque ya aplicó todo lo que recibió. Sus lecturas quedarían desactualizadas hasta que se reconecte. En este proyecto solo ocurre si cae el primario.
-- **Primera lectura tras una caída:** la lectura a la que le toca la réplica caída espera hasta `connection-timeout` (3 s por defecto) mientras el pool intenta reconectar; después la réplica se excluye y esa lectura se atiende en otra réplica, sin error. Las lecturas siguientes ya no esperan. Se observó así con `docker stop` sobre el clúster real: la lectura tardó unos 3 s. Bajar `connection-timeout` acorta esa espera, a cambio de excluir antes una réplica sana cuando el pool está saturado.
-- **Pool agotado:** un tiempo de espera agotado al pedir una conexión también excluye la réplica; vuelve en la siguiente verificación apta.
+- **Primera lectura tras una caída:** la lectura a la que le toca la réplica caída espera hasta `connection-timeout` (3 s por defecto) mientras el pool intenta reconectar; después la réplica se excluye y esa lectura se atiende en otra réplica, sin error. Las lecturas siguientes ya no esperan. Se observó así con `docker stop` sobre el clúster real: la lectura tardó unos 3 s. Bajar `connection-timeout` acorta esa espera.
+- **Pool agotado:** si todas las conexiones del pool de una réplica están en uso (`maximum-pool-size`), la lectura espera hasta `connection-timeout` y se intenta en la otra réplica. La réplica **no** se excluye: responde, solo está ocupada. HikariCP lo distingue de un nodo caído porque la excepción de espera agotada no trae causa; cuando el nodo no responde, trae el error de conexión. Si todas las réplicas disponibles están agotadas, la lectura falla con `SQLTransientConnectionException` y no se reintenta ni se pasa al primario, para no trasladarle toda la carga de lectura. El monitor tampoco cuenta un pool agotado como verificación fallida (`DB health node=... verificación omitida: pool agotado`).
 - **Reintento:** solo cubre la transacción de solo lectura más externa. Una lectura que participa en una transacción ya abierta propaga el error a quien abrió la transacción.
 
 ## Pruebas
@@ -234,6 +236,7 @@ Las pruebas no necesitan Docker ni PostgreSQL: usan transacciones reales de Spri
 | `RoundRobinReplicaSelectionPolicyTests` | Alternancia y orden, 3 réplicas, una sola réplica, desbordamiento del contador, reparto 500/500 con 8 hilos |
 | `ReadWriteRoutingDataSourceTests` | Escrituras siempre al primario, 10 lecturas alternadas, sin transacción al primario, decisión perezosa, por qué hace falta el proxy, health check solo al primario, routing oculto a `unwrap`, sin réplicas, formato del log |
 | `ReplicaResilienceTests` | Réplica detenida excluida al instante y lecturas por la otra, degradación al primario, umbral de fallos, réplica promovida o retrasada fuera de la rotación, reincorporación solo cuando se puso al día, transiciones registradas una vez, lecturas críticas (`PrimaryRead`, `@ReadFromPrimary`, escritura seguida de lectura crítica), reintento en otra réplica y sus límites |
+| `PoolSaturationTests` | Con HikariCP real: un pool agotado (excepción sin causa) no excluye la réplica y la lectura va a la otra; con todas agotadas la lectura falla sin cargar al primario; un nodo inalcanzable (excepción con causa) sí se excluye; el monitor no cuenta un pool agotado como fallo |
 | `PersistenceRoutingAutoConfigurationTests` | Reemplaza el `DataSource` de Spring Boot (un único bean), propiedades y variables de entorno, herencia de credenciales, política propia, health check de Actuator sin réplicas, monitor de réplicas (arranque, sonda JDBC por defecto, desactivable), `@ReadFromPrimary` y reintento aplicados a los beans, inactivo sin URL, error si falta una URL, cierre de los pools |
 
 > **Fuera de Docker:** si en el equipo hay un PostgreSQL instalado escuchando en el puerto `5432`, las conexiones a `127.0.0.1:5432` pueden llegar a ese servidor en lugar de al contenedor `primary`. Dentro de Docker Compose (`primary:5432`) no ocurre.
