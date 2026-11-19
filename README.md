@@ -4,7 +4,7 @@ Proyecto de la asignatura **Aplicaciones Distribuidas** (Universidad Estatal Pen
 
 Sistema de microservicios en Spring Boot con descubrimiento dinámico (Eureka), un único punto de entrada con balanceo de carga (Spring Cloud Gateway) y una capa PostgreSQL con un nodo primario y dos réplicas de lectura. Todo se levanta con Docker Compose.
 
-> **Estado:** el sistema está completo e integrado. Dos entregables dependen de trabajo que se cierra aparte y están marcados donde corresponde: los resultados de las pruebas P01-P03 en el informe y el enlace del video. Ver [Entregables y documentación](#entregables-y-documentación).
+> **Estado:** el sistema está completo e integrado y las pruebas P01-P08 tienen resultados en el informe. Quedan dos pendientes que se cierran aparte: la consolidación final del informe (issue #14) y el enlace del video (issue #15). Ver [Entregables y documentación](#entregables-y-documentación).
 
 ## Equipo
 
@@ -114,7 +114,7 @@ Dentro de la red de Compose cada contenedor usa su puerto interno (el mismo núm
 | Docker con Compose v2 (`docker compose`) | Construir y ejecutar todo el sistema | En Windows y macOS, Docker Desktop. Se necesita una versión reciente de Compose (se usa `docker compose up --wait`); se desarrolló con Docker 29 y Compose 5 |
 | Conexión a Internet | La primera vez | Descarga las imágenes base, Maven y las dependencias. La primera construcción tarda varios minutos |
 | Puertos libres: 8080-8083, 8761, 5432-5434 | Publicar los servicios en el host | Los de las aplicaciones se cambian en `.env`; los de PostgreSQL no |
-| Bash y `curl` | Solo para los scripts de P04-P08 y los ejemplos con `curl` | En Windows, Git Bash (viene con Git for Windows) |
+| Bash, `curl` y `awk` | Solo para los scripts de P02-P08 y los ejemplos con `curl` | En Windows, Git Bash (viene con Git for Windows) |
 | Java 21 | Solo para compilar o probar **fuera de Docker** | No hace falta instalar Maven: el repositorio incluye Maven Wrapper (`mvnw`) |
 
 Para levantar el sistema no hace falta Java ni Maven en el equipo: las imágenes se compilan dentro de Docker.
@@ -275,7 +275,7 @@ No hay que cargar nada a mano.
 docker compose exec primary sh -c 'psql -U "$POSTGRES_USER" -d productos_db -c "SELECT * FROM producto;"'
 ```
 
-Las pruebas P04-P08 crean además productos y pedidos de prueba en cada ejecución.
+Las pruebas P02-P08 crean además productos y pedidos de prueba en cada ejecución.
 
 ## Pruebas y compilación
 
@@ -299,7 +299,19 @@ docker build -f discovery-server/Dockerfile -t discovery-server .
 
 ### Pruebas experimentales P01-P08
 
-Los escenarios, los procedimientos y los resultados están en [docs/informe-pruebas.md](docs/informe-pruebas.md). Las evidencias de P04-P08 (salidas completas y logs) están en [docs/evidencias/](docs/evidencias/).
+Los escenarios, los procedimientos y los resultados están en [docs/informe-pruebas.md](docs/informe-pruebas.md). Las evidencias de P01-P08 (salidas, registros y logs) están en [docs/evidencias/](docs/evidencias/).
+
+#### P01-P03 · Descubrimiento, balanceo y fallo de instancia
+
+P01 se hace con los comandos de verificación de [Verificar](#verificar) y los pasos de su sección del informe. P02 y P03 tienen script y requieren el sistema completo levantado; se ejecutan con Bash (en Windows, Git Bash):
+
+```bash
+scripts/p02-balanceo.sh            # 100 solicitudes por el Gateway y reparto por instancia (X-Instance-Id)
+scripts/p03-fallo-instancia.sh     # carga continua, termina servicio-productos-2 con kill y mide errores y tiempos
+MODO=stop scripts/p03-fallo-instancia.sh   # lo mismo con parada ordenada (docker compose stop)
+```
+
+P03 deja la instancia otra vez levantada al terminar, incluso si se interrumpe con Ctrl+C. Con los valores por defecto aplica 90 s de carga, más la recuperación; las variables (`DURACION`, `SERVICIO`, `URL_BASE`, `SALIDA`, etc.) están descritas en el encabezado de cada script y en el informe.
 
 #### P04 · Comunicación entre servicios
 
@@ -340,7 +352,7 @@ docker compose restart servicio-pedidos      # reiniciar un servicio
 
 - Con la instancia detenida, el Gateway reparte las solicitudes entre las restantes. Los `GET` que lleguen a la instancia caída se reintentan en otra.
 - Con `docker compose stop`, la instancia avisa a Eureka y la marca `DOWN` a los ~2 s, y el Gateway deja de enviarle tráfico en pocos segundos. Eureka no la retira del registro de inmediato: sigue apareciendo hasta los ~25 s.
-- Si la instancia cae de forma abrupta (sin avisar, por ejemplo `docker compose kill servicio-productos-2`), Eureka la expulsa a los ~24-27 s y el Gateway deja de enviarle solicitudes a los ~30 s (hasta ~35 s en el peor caso). Durante esa ventana hay errores `500` transitorios: en P03, entre 8 y 11 de unas 135 solicitudes `GET`, que el reintento del Gateway no siempre rescata, y las escrituras dirigidas a ella pueden fallar. El cliente debe reintentar (ver [docs/arquitectura.md](docs/arquitectura.md#eureka-configuración-y-tiempos-de-detección)).
+- Si la instancia cae de forma abrupta (sin avisar, por ejemplo `docker compose kill servicio-productos-2`), Eureka la expulsa a los ~24-27 s y el Gateway deja de enviarle solicitudes a los ~30 s (hasta ~35 s en el peor caso). Durante esa ventana hay errores `500` transitorios: en P03, entre 8 y 11 de ~130 solicitudes `GET`, que el reintento del Gateway no siempre rescata, y las escrituras dirigidas a ella pueden fallar. El cliente debe reintentar (ver [docs/arquitectura.md](docs/arquitectura.md#eureka-configuración-y-tiempos-de-detección)).
 - Los contenedores no tienen reinicio automático: una instancia caída hay que iniciarla con `docker compose start`.
 - Si `servicio-productos` no tiene ninguna instancia registrada, `servicio-pedidos` responde `503` al crear pedidos.
 
@@ -409,7 +421,7 @@ También es necesario si el entorno se creó antes de este esquema de bases y ro
 
 ### Informe de pruebas
 
-P04-P08 (comunicación entre servicios y persistencia) están ejecutadas y documentadas, con evidencias en [docs/evidencias/](docs/evidencias/). **Pendiente:** los resultados de P01-P03 (descubrimiento, balanceo y fallo de instancia) se completan en el informe al integrar su PR (issue #5).
+P01-P08 están ejecutadas y documentadas, con evidencias en [docs/evidencias/](docs/evidencias/). **Pendiente:** la consolidación final del informe se completa al cerrar la issue #14.
 
 ### Colección de solicitudes
 
