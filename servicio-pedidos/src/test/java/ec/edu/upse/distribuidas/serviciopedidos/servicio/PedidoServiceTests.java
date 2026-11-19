@@ -30,12 +30,16 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /** Migraciones de Flyway reales sobre H2 y servicio-productos simulado. */
 @SpringBootTest
+@ExtendWith(OutputCaptureExtension.class)
 class PedidoServiceTests {
 
     @Autowired
@@ -113,6 +117,23 @@ class PedidoServiceTests {
 
         assertThat(servicio.obtener(creado.getId()).getProductoId()).isEqualTo(1L);
         assertThat(servicio.listar()).hasSize(1);
+    }
+
+    @Test
+    void laLecturaDesdeElPrimarioEsCriticaYLaOrdinariaNo(CapturedOutput salida) {
+        when(productos.obtener(1L)).thenReturn(producto(10));
+        Pedido creado = servicio.crear(1L, 1);
+
+        int antes = salida.getOut().length();
+        servicio.obtener(creado.getId());
+        String ordinaria = salida.getOut().substring(antes);
+        antes = salida.getOut().length();
+        servicio.obtenerDesdePrimario(creado.getId());
+        String critica = salida.getOut().substring(antes);
+
+        // Sin réplicas en las pruebas, las dos van al primario; el log distingue la crítica.
+        assertThat(ordinaria).contains("tx=read-only").doesNotContain("read=critical");
+        assertThat(critica).contains("tx=read-only read=critical");
     }
 
     @Test

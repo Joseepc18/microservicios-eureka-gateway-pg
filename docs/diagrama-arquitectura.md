@@ -76,7 +76,7 @@ flowchart LR
     aptas -->|"no: lectura degradada"| primario
 ```
 
-Una réplica está apta si responde, sigue en modo recuperación (no fue promovida) y su retraso no supera 10 s. El único método con `@ReadFromPrimary` es `GET /pedidos/{id}` de `servicio-pedidos`, porque el cliente lo consulta justo después de crear el pedido.
+Una réplica está apta si responde, sigue en modo recuperación (no fue promovida) y su retraso no supera 10 s. La lectura crítica es `GET /pedidos/{id}?consistencia=fuerte` de `servicio-pedidos` (`@ReadFromPrimary`), la que usa el cliente justo después de crear el pedido; sin el parámetro, la misma consulta es ordinaria y va a una réplica.
 
 ## Secuencia: crear un pedido
 
@@ -115,8 +115,8 @@ sequenceDiagram
     end
 
     Note over C,DBP: Consulta inmediata del pedido recién creado
-    C->>GW: GET /api/pedidos/{id}
-    GW->>PE: GET /pedidos/{id}
+    C->>GW: GET /api/pedidos/{id}?consistencia=fuerte
+    GW->>PE: GET /pedidos/{id}?consistencia=fuerte
     PE->>DBP: SELECT en pedidos_db (lectura crítica, @ReadFromPrimary)
     DBP-->>PE: pedido
     PE-->>GW: 200
