@@ -22,6 +22,10 @@ public class ProductosClient {
         this.rest = rest;
     }
 
+    /**
+     * Consulta un producto. Si la instancia elegida no responde, el LoadBalancer repite la consulta
+     * una vez en otra instancia ({@code spring.cloud.loadbalancer.retry} en application.yml).
+     */
     public ProductoDto obtener(Long id) {
         try {
             return rest.get().uri("/productos/{id}", id).retrieve().body(ProductoDto.class);
@@ -32,7 +36,10 @@ public class ProductosClient {
         }
     }
 
-    /** Descuenta stock. No se reintenta: repetir un PATCH podría descontar dos veces. */
+    /**
+     * Descuenta stock. No se reintenta (el reintento del LoadBalancer solo cubre GET): repetir un
+     * PATCH podría descontar dos veces.
+     */
     public void descontarStock(Long id, int cantidad) {
         try {
             rest.patch().uri("/productos/{id}/stock", id)

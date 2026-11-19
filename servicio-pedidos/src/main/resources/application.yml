@@ -13,6 +13,15 @@ spring:
       cache:
         # Caché de instancias del LoadBalancer (por defecto 35 s).
         ttl: 5s
+      # Reintento en las llamadas a servicio-productos (requiere spring-retry, ver pom.xml).
+      # Mientras Eureka no expulsa una instancia caída, el LoadBalancer puede elegirla: un GET que
+      # falla por conexión o timeout se repite una vez en OTRA instancia. Solo GET: un PATCH de
+      # stock repetido podría descontar dos veces (retry-on-all-operations = false).
+      retry:
+        enabled: true
+        retry-on-all-operations: false
+        max-retries-on-same-service-instance: 0
+        max-retries-on-next-service-instance: 1
 
 # Enrutamiento de persistencia (módulo persistence-routing): escrituras al primario y lecturas
 # readOnly repartidas entre las réplicas. Las réplicas se declaran por variables de entorno
