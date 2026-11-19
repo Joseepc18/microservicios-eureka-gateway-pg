@@ -10,7 +10,12 @@
 #
 # Requiere el sistema levantado (docker compose up -d --build --wait) y ejecutarse en el host
 # donde corre Docker Compose. Se puede lanzar desde cualquier carpeta: el script entra a la
-# raíz del repositorio.
+# raíz del repositorio. Dependencias: bash, curl, awk, docker compose y GNU date: se usa
+# `date +%s%N` (nanosegundos), que NO funciona con el date BSD de macOS (allí instalar
+# coreutils y usar gdate, o ejecutar el script en Linux o Git Bash).
+#
+# Si se interrumpe con Ctrl+C (INT) o TERM, el script vuelve a levantar la instancia que
+# hubiera terminado y detiene el sondeo de Eureka, para no dejar el sistema degradado.
 #
 # Uso:
 #   scripts/p03-fallo-instancia.sh
@@ -35,6 +40,15 @@
 # primero a IPv6 y la solicitud se queda colgada.
 
 set -u
+
+# SALIDA relativa se interpreta desde la carpeta de quien llama, antes de entrar a la raíz del repo.
+SALIDA_ARG="${SALIDA:-}"
+if [ -n "$SALIDA_ARG" ]; then
+  case "$SALIDA_ARG" in
+    /* | [A-Za-z]:*) ;;
+    *) SALIDA_ARG="$PWD/$SALIDA_ARG" ;;
+  esac
+fi
 cd "$(dirname "$0")/.." || exit 2
 
 MODO="${MODO:-kill}"
@@ -48,11 +62,26 @@ DURACION="${DURACION:-90}"
 FALLO_EN="${FALLO_EN:-20}"
 INTERVALO_MS="${INTERVALO_MS:-200}"
 VENTANA_DURANTE="${VENTANA_DURANTE:-40}"
-SALIDA="${SALIDA:-$(mktemp -d)}"
+SALIDA="${SALIDA_ARG:-$(mktemp -d)}"
 URL="${URL_BASE%/}${RUTA}"
 APP_EUREKA=$(printf '%s' "$APP" | tr '[:lower:]' '[:upper:]')
 
 case "$MODO" in kill | stop) ;; *) echo "MODO debe ser kill o stop (recibido: '$MODO')" >&2; exit 2 ;; esac
+for nombre in DURACION FALLO_EN INTERVALO_MS VENTANA_DURANTE; do
+  valor="${!nombre}"
+  if ! [[ "$valor" =~ ^[0-9]+$ ]]; then
+    echo "$nombre debe ser un entero no negativo (recibido: '$valor')" >&2
+    exit 2
+  fi
+done
+if [ "$INTERVALO_MS" -lt 1 ] || [ "$DURACION" -lt 1 ]; then
+  echo "DURACION e INTERVALO_MS deben ser mayores que 0." >&2
+  exit 2
+fi
+if ! [[ "$(date +%s%N)" =~ ^[0-9]{16,}$ ]]; then
+  echo "Este script necesita GNU date (date +%s%N). En macOS use coreutils o ejecútelo en Linux o Git Bash." >&2
+  exit 2
+fi
 mkdir -p "$SALIDA"
 SOLICITUDES="$SALIDA/solicitudes.txt"   # t_ms codigo instancia latencia_ms
 EUREKA_LOG="$SALIDA/eureka.txt"         # t_ms estado de la instancia en el registro de Eureka
@@ -123,12 +152,32 @@ INICIO_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 T0=$(ahora_ms)
 vigilar_eureka &
 PID_EUREKA=$!
-trap 'kill "$PID_EUREKA" 2>/dev/null' EXIT
-
-# ---------------------------------------------------------------- carga con fallo a mitad
 pids=()
 fallo_lanzado=0
+instancia_recuperada=0
+PID_FALLO=""
 T_FALLO=0
+
+# Salida normal: detener el sondeo de Eureka.
+al_salir() { kill "$PID_EUREKA" 2>/dev/null; }
+# Interrupción (Ctrl+C o TERM): no dejar el sistema degradado. Se detienen la carga y el sondeo,
+# se espera a que termine el comando de fallo (si sigue en curso) y se vuelve a levantar la instancia.
+al_interrumpir() {
+  trap '' INT TERM
+  echo
+  echo "Interrumpido: deteniendo la carga y el sondeo de Eureka."
+  kill "$PID_EUREKA" ${pids[@]+"${pids[@]}"} 2>/dev/null
+  if [ "$fallo_lanzado" -eq 1 ] && [ "$instancia_recuperada" -eq 0 ]; then
+    [ -n "$PID_FALLO" ] && wait "$PID_FALLO" 2>/dev/null
+    echo "Volviendo a levantar $SERVICIO (docker compose start)."
+    docker compose start "$SERVICIO" 2>&1 | sed 's/^/  /'
+  fi
+  exit 130
+}
+trap al_salir EXIT
+trap al_interrumpir INT TERM
+
+# ---------------------------------------------------------------- carga con fallo a mitad
 i=0
 while :; do
   objetivo=$((i * INTERVALO_MS))
@@ -142,6 +191,7 @@ while :; do
     T_FALLO=$actual
     ( docker compose "$MODO" "$SERVICIO" > "$SALIDA/docker-fallo.txt" 2>&1
       echo "$(($(ahora_ms) - T0))" > "$SALIDA/fallo-completado-ms.txt" ) &
+    PID_FALLO=$!
     echo "[t=$(awk -v m="$T_FALLO" 'BEGIN { printf "%.1f", m / 1000 }') s] docker compose $MODO $SERVICIO"
   fi
 
@@ -156,6 +206,9 @@ wait "${pids[@]}"
 sort -n -o "$SOLICITUDES" "$SOLICITUDES"
 FALLO_COMPLETADO=$(cat "$SALIDA/fallo-completado-ms.txt" 2>/dev/null || echo "?")
 echo "Comando de fallo terminado en t=${FALLO_COMPLETADO} ms (lanzado en t=${T_FALLO} ms)"
+TOTAL_SOLICITUDES=$(wc -l < "$SOLICITUDES")
+awk -v n="$TOTAL_SOLICITUDES" -v d="$DURACION" -v i="$INTERVALO_MS" 'BEGIN {
+  printf "Ritmo de carga efectivo: %d solicitudes en %d s = %.2f solicitudes/s (nominal: %.2f; depende de la máquina)\n", n, d, n / d, 1000 / i }'
 
 # ---------------------------------------------------------------- análisis por fases
 VENTANA_MS=$((VENTANA_DURANTE * 1000))
@@ -248,6 +301,7 @@ grep -E 'status=5[0-9][0-9]' "$SALIDA/gateway.txt" | head -15 | sed 's/^/  /'
 echo
 echo "== Recuperación: docker compose start $SERVICIO =="
 T_START=$(ahora_ms)
+instancia_recuperada=1
 docker compose start "$SERVICIO" 2>&1 | sed 's/^/  /'
 echo "[arranque ordenado a las $(date '+%H:%M:%S')]"
 
