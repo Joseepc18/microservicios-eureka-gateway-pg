@@ -4,7 +4,7 @@ Proyecto de la asignatura **Aplicaciones Distribuidas** (Universidad Estatal Pen
 
 Sistema de microservicios en Spring Boot con descubrimiento dinámico (Eureka), un único punto de entrada con balanceo de carga (Spring Cloud Gateway) y una capa PostgreSQL con un nodo primario y dos réplicas de lectura. Todo se levanta con Docker Compose.
 
-> **Estado:** el sistema está completo e integrado y las pruebas P01-P08 tienen resultados en el informe. Quedan dos pendientes que se cierran aparte: la consolidación final del informe (issue #14) y el enlace del video (issue #15). Ver [Entregables y documentación](#entregables-y-documentación).
+> **Estado:** el sistema está completo e integrado y las pruebas P01-P08 tienen resultados en el informe. Queda un pendiente que se cierra aparte: el enlace del video (issue #15). Ver [Entregables y documentación](#entregables-y-documentación).
 
 ## Equipo
 
@@ -422,7 +422,7 @@ También es necesario si el entorno se creó antes de este esquema de bases y ro
 
 ### Informe de pruebas
 
-P01-P08 están ejecutadas y documentadas, con evidencias en [docs/evidencias/](docs/evidencias/). **Pendiente:** la consolidación final del informe se completa al cerrar la issue #14.
+P01-P08 están ejecutadas y documentadas, con evidencias en [docs/evidencias/](docs/evidencias/). El informe incluye un resumen de los ocho escenarios, las limitaciones observadas y las mejoras posibles.
 
 ### Colección de solicitudes
 
@@ -438,6 +438,7 @@ Ejemplos de todas las operaciones a través del Gateway, con casos de error y ve
 - El Gateway no tiene autenticación y Eureka es un servidor único, sin alta disponibilidad: es un laboratorio, no un despliegue de producción.
 - La replicación es asíncrona: una lectura ordinaria puede no ver una escritura reciente (por eso existen las lecturas críticas).
 - La retención de WAL por slots puede acumular espacio en el primario mientras una réplica está caída (tope: 1 GB).
+- Si una instancia de servicio se cae sin avisar, durante ~25 a 30 s puede haber errores transitorios hasta que Eureka y el Gateway dejan de elegirla (P03).
 
 El detalle y los casos observados están en [docs/arquitectura.md](docs/arquitectura.md), [docs/api.md](docs/api.md#limitación-sin-transacciones-distribuidas) y la sección *Limitaciones observadas* de [docs/informe-pruebas.md](docs/informe-pruebas.md).
 

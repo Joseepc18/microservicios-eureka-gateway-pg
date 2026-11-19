@@ -1,7 +1,7 @@
 # Servicio de productos caído: servicio-pedidos responde 503 con un mensaje claro.
 #
-# Precondición (ejecutar en una terminal antes de enviar la solicitud, y esperar unos 15 segundos
-# a que Eureka retire las instancias del registro):
+# Precondición (ejecutar en una terminal antes de enviar la solicitud, y esperar unos 30 segundos
+# a que Eureka retire las instancias del registro; antes responde igualmente 503, con otro mensaje):
 #
 #   docker compose stop servicio-productos-1 servicio-productos-2
 #
