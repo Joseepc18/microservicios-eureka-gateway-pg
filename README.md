@@ -167,6 +167,19 @@ Si un puerto del host ya está en uso (`ports are not available`), cambiar el va
 
 Resultados y evidencias en [docs/informe-pruebas.md](docs/informe-pruebas.md).
 
+### P05–P08 · Persistencia
+
+Requieren el sistema completo levantado (`docker compose up -d --build --wait`) y se ejecutan desde la raíz del repositorio con Bash (en Windows, Git Bash). Cada script provoca su escenario, imprime el resultado (`PXX OK` o `PXX FALLA`) y guarda la salida y el log de enrutamiento de `servicio-pedidos` en `docs/evidencias/PXX/`. Ejecutarlos en este orden:
+
+```bash
+scripts/p05-enrutamiento.sh    # escrituras al primario, lecturas alternadas entre réplicas
+scripts/p06-fallo-replica.sh   # detiene replica1: las lecturas siguen por replica2 (la deja detenida)
+scripts/p07-consistencia.sh    # crear y consultar al instante con la lectura crítica (primario)
+scripts/p08-recuperacion.sh    # reinicia replica1: se pone al día y vuelve a la rotación
+```
+
+Usan `curl`, `docker compose` y el `.env` de la raíz. Si las variables están en otro archivo, se indica con `ENV_FILE=/ruta/al/archivo`. Si el Gateway no está en el puerto 8080, se indica con `GATEWAY_PORT`. P07 pausa unos segundos el replay de WAL de las réplicas para mostrar el retraso, y lo reanuda siempre al terminar. Cada ejecución crea un producto y algunos pedidos de prueba.
+
 ## Colección de solicitudes *(pendiente)*
 
 Se ubicará en `requests/`.
