@@ -64,7 +64,9 @@ public class ReadOnlyRetryInterceptor implements MethodInterceptor {
                 // Cada intento recorre de nuevo la cadena de interceptores (nueva transacción).
                 return proxyInvocation.invocableClone().proceed();
             } catch (Throwable ex) {
-                if (attempt >= attempts || !ConnectionFailures.isConnectionFailure(ex)) {
+                // Un pool agotado no es una réplica caída: repetir la lectura solo sumaría espera.
+                if (attempt >= attempts || !ConnectionFailures.isConnectionFailure(ex)
+                        || ConnectionFailures.hasPoolExhaustion(ex)) {
                     throw ex;
                 }
                 log.warn("DB retry {}.{}: fallo de conexión en una lectura ({}); intento {}/{} en otra réplica",

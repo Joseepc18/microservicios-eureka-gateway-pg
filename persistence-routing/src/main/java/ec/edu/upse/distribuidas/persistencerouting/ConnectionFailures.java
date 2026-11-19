@@ -48,6 +48,31 @@ final class ConnectionFailures {
         return false;
     }
 
+    /**
+     * {@code true} si el pool de conexiones del nodo está agotado: todas sus conexiones están en
+     * uso y la espera superó el {@code connection-timeout}. El nodo responde, solo está ocupado.
+     *
+     * <p>HikariCP lanza en los dos casos una {@link SQLTransientConnectionException} ("Connection is
+     * not available, request timed out"), pero solo cuando el nodo no responde le pone como causa
+     * el último error al abrir una conexión. Sin causa, el pool simplemente estaba lleno.
+     */
+    static boolean isPoolExhausted(Throwable ex) {
+        return ex instanceof SQLTransientConnectionException && ex.getCause() == null;
+    }
+
+    /** {@code true} si en la cadena de causas hay un pool agotado ({@link #isPoolExhausted}). */
+    static boolean hasPoolExhaustion(Throwable ex) {
+        for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+            if (isPoolExhausted(cause)) {
+                return true;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return false;
+    }
+
     /** Mensaje breve de la causa raíz, para el log. */
     static String describe(Throwable ex) {
         Throwable root = ex;
