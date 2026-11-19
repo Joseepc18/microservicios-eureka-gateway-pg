@@ -119,14 +119,18 @@ class PoolSaturationTests {
     @Test
     void theMonitorDoesNotCountASaturatedPoolAsAFailure(CapturedOutput output) throws SQLException {
         saturate(replica1);
-        ReplicaHealthMonitor monitor = new ReplicaHealthMonitor(pool, new JdbcReplicaProbe(Duration.ofSeconds(1)),
-                Duration.ofSeconds(5), Duration.ofSeconds(10), 1);
+        // replica1 se consulta con la sonda JDBC real a través de su pool (agotado); replica2 está sana.
+        JdbcReplicaProbe jdbc = new JdbcReplicaProbe(Duration.ofSeconds(1));
+        ReplicaProbe probe = replica -> replica == replica1 ? jdbc.probe(replica) : new ReplicaProbe.Status(true, 0);
+        ReplicaHealthMonitor monitor = new ReplicaHealthMonitor(pool, probe, Duration.ofSeconds(5),
+                Duration.ofSeconds(10), 1);
 
-        monitor.check(replica1);
+        monitor.checkAll();
 
         assertThat(replica1.isAvailable()).isTrue();
         assertThat(replica1.getConsecutiveFailures()).isZero();
-        assertThat(output.getOut()).doesNotContain("estado=DOWN");
+        assertThat(output.getOut()).doesNotContain("estado=DOWN")
+                .contains("DB health node=replica1 verificación omitida: pool agotado");
     }
 
     @Test

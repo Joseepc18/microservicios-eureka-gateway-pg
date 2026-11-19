@@ -208,6 +208,59 @@ class ReplicaResilienceTests {
         assertThat(output.getOut()).contains("retraso de replicación 25.0 s > máximo 10 s");
     }
 
+    @Test
+    void aReplicaThatLostStreamingLeavesTheRotationWhileTheOtherStillReceivesWal(CapturedOutput output) {
+        // Sin receptor de WAL: ya aplicó lo que recibió (retraso 0), pero no recibe nada nuevo.
+        replicationStatus.put("replica1", new ReplicaProbe.Status(true, 0, false));
+
+        monitor.checkAll();
+        assertThat(replica1.isAvailable()).isTrue();
+        monitor.checkAll();
+
+        assertThat(replica1.isAvailable()).isFalse();
+        assertThat(replica2.isAvailable()).isTrue();
+        assertThat(output.getOut()).contains("DB health node=replica1 estado=DOWN")
+                .contains("no recibe WAL del primario");
+        reads(4);
+        assertThat(used).containsOnly("replica2");
+    }
+
+    @Test
+    void whenNoReplicaReceivesWalTheyStayInTheRotationWithAWarning(CapturedOutput output) {
+        // Primario caído: ninguna réplica recibe WAL. Excluirlas dejaría sin lecturas al servicio.
+        replicationStatus.put("replica1", new ReplicaProbe.Status(true, 0, false));
+        replicationStatus.put("replica2", new ReplicaProbe.Status(true, 0, false));
+
+        for (int i = 0; i < 3; i++) {
+            monitor.checkAll();
+        }
+
+        assertThat(pool.getAvailableReplicas()).containsExactly(replica1, replica2);
+        assertThat(output.getOut()).doesNotContain("estado=DOWN");
+        assertThat(output.getOut().split("ninguna réplica recibe WAL del primario", -1)).hasSize(2);
+        reads(2);
+        assertThat(used).containsExactly("replica1", "replica2");
+    }
+
+    @Test
+    void aRestartedReplicaRejoinsOnlyOnceItReceivesWalAgain(CapturedOutput output) {
+        replica1Db.setDown(true);
+        monitor.checkAll();
+        monitor.checkAll();
+        assertThat(replica1.isAvailable()).isFalse();
+
+        // Arrancó y aplicó su WAL local, pero el receptor aún no se conectó al primario.
+        replica1Db.setDown(false);
+        replicationStatus.put("replica1", new ReplicaProbe.Status(true, 0, false));
+        monitor.checkAll();
+        assertThat(replica1.isAvailable()).isFalse();
+
+        replicationStatus.put("replica1", new ReplicaProbe.Status(true, 0, true));
+        monitor.checkAll();
+        assertThat(replica1.isAvailable()).isTrue();
+        assertThat(output.getOut()).contains("DB health node=replica1 estado=UP recovery=true lag=0.0s wal=streaming");
+    }
+
     // --- Reincorporación ---
 
     @Test
