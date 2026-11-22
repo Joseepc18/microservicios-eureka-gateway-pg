@@ -7,6 +7,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.web.reactive.function.client.WebClientCustomizer;
 import org.springframework.cloud.gateway.config.HttpClientCustomizer;
 
 import reactor.netty.http.client.HttpClient;
@@ -21,6 +22,9 @@ class ResolucionDnsConfigTests {
     @Autowired
     private List<HttpClientCustomizer> customizers;
 
+    @Autowired
+    private List<WebClientCustomizer> webClientCustomizers;
+
     @Test
     void elGatewayRegistraLaCacheDnsCorta() {
         assertThat(customizers).hasSize(1);
@@ -31,5 +35,13 @@ class ResolucionDnsConfigTests {
         // resolver(...) devuelve una configuración nueva: la original queda intacta.
         assertThat(configurado).isNotSameAs(base);
         assertThat(configurado.configuration().resolver()).isNotNull();
+    }
+
+    @Test
+    void elWebClientDelHealthCheckTambienUsaLaCacheDnsCorta() {
+        // El health-check del LoadBalancer usa el WebClient.Builder de Spring Boot, al que se le aplica este customizer.
+        assertThat(webClientCustomizers).anySatisfy(c -> assertThat(c.getClass().getName()).contains("ResolucionDnsConfig"));
+        assertThat(ResolucionDnsConfig.conCacheDnsCorta(HttpClient.create(), java.time.Duration.ofSeconds(5)).configuration().resolver())
+                .isNotNull();
     }
 }
